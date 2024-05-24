@@ -65,6 +65,7 @@ class ORCA(Policy):
         self.radius = 0.3
         self.max_speed = 1
         self.sim = None
+        self.time_step = 0.25
 
     def configure(self, config):
         return
@@ -72,7 +73,7 @@ class ORCA(Policy):
     def set_phase(self, phase):
         return
 
-    def predict(self, state):
+    def predict(self, state, border=None, radius=None, baseline=None):
         """
         Create a rvo2 simulation at each time step and run one step
         Python-RVO2 API: https://github.com/sybrenstuvel/Python-RVO2/blob/master/src/rvo2.pyx
@@ -95,6 +96,9 @@ class ORCA(Policy):
             for human_state in state.human_states:
                 self.sim.addAgent(human_state.position, *params, human_state.radius + 0.01 + self.safety_space,
                                   self.max_speed, human_state.velocity)
+            if border is not None:
+                    self.sim.addObstacle(border)
+                    self.sim.processObstacles()
         else:
             self.sim.setAgentPosition(0, robot_state.position)
             self.sim.setAgentVelocity(0, robot_state.velocity)
@@ -128,8 +132,9 @@ class ORCA(Policy):
 class CentralizedORCA(ORCA):
     def __init__(self):
         super().__init__()
+        self.time_step = 0.25
 
-    def predict(self, state):
+    def predict(self, state, border=None):
         """ Centralized planning for all agents """
         params = self.neighbor_dist, self.max_neighbors, self.time_horizon, self.time_horizon_obst
         if self.sim is not None and self.sim.getNumAgents() != len(state):
@@ -138,6 +143,10 @@ class CentralizedORCA(ORCA):
 
         if self.sim is None:
             self.sim = rvo2.PyRVOSimulator(self.time_step, *params, self.radius, self.max_speed)
+            #if border is not None:
+            #        self.sim.addObstacle(border)
+            #        self.sim.processObstacles()
+
             for agent_state in state:
                 self.sim.addAgent(agent_state.position, *params, agent_state.radius + 0.01 + self.safety_space,
                                   self.max_speed, agent_state.velocity)

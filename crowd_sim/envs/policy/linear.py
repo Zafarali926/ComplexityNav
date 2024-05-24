@@ -14,7 +14,8 @@ class Linear(Policy):
         assert True
 
     def predict(self, state):
-        self_state = state.self_state
+        #self_state = state.self_state
+        self_state = state
         theta = np.arctan2(self_state.gy-self_state.py, self_state.gx-self_state.px)
         vx = np.cos(theta) * self_state.v_pref
         vy = np.sin(theta) * self_state.v_pref

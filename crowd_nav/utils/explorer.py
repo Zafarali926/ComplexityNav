@@ -4,10 +4,12 @@ import copy
 import torch
 from tqdm import tqdm
 from crowd_sim.envs.utils.info import *
+from crowd_sim.envs.utils.action import ActionRot, ActionXY
+import numpy as np
 
 
 class Explorer(object):
-    def __init__(self, env, robot, device, writer, memory=None, gamma=None, target_policy=None):
+    def __init__(self, env, robot, device, writer, memory=None, gamma=None, scenarios=None, target_policy=None):
         self.env = env
         self.robot = robot
         self.device = device
@@ -16,14 +18,24 @@ class Explorer(object):
         self.gamma = gamma
         self.target_policy = target_policy
         self.statistics = None
+        self.scenarios = scenarios
+        #print("SCENARIOS IS: ", scenarios)
+
+    def compute_path_irregularity(self, action, direct_action):
+        a = np.arctan2(action.vx, action.vy)
+        da = np.arctan2(direct_action.vx, direct_action.vy)
+        return np.abs(a - da)
 
     # @profile
     def run_k_episodes(self, k, phase, update_memory=False, imitation_learning=False, episode=None, epoch=None,
-                       print_failure=False):
+                       print_failure=False, baseline=None):
         self.robot.policy.set_phase(phase)
         success_times = []
         collision_times = []
         timeout_times = []
+        min_distances = []
+        min_distances_overall = []
+        timesteps = []
         success = 0
         collision = 0
         timeout = 0
@@ -33,6 +45,8 @@ class Explorer(object):
         average_returns = []
         collision_cases = []
         timeout_cases = []
+        average_accelerations = []
+        average_path_irregularity = []
 
         if k != 1:
             pbar = tqdm(total=k)
@@ -40,17 +54,38 @@ class Explorer(object):
             pbar = None
 
         for i in range(k):
-            ob = self.env.reset(phase)
+            if self.scenarios is not None:
+                #print("SCENARIOS NOT NONE")
+                ob = self.env.reset(phase, self.scenarios[i])
+            else:
+                #print("SCENARIOS NONE")
+                ob = self.env.reset(phase)
+            self.env.scenario_num = self.env.scenario_num + 1
             done = False
             states = []
             actions = []
             rewards = []
+            pis = []
+            path_length = 0.0
             while not done:
-                action = self.robot.act(ob)
-                ob, reward, done, info = self.env.step(action)
+                rstate = self.robot.get_full_state()
+                prev_pos = [rstate.px, rstate.py]
+                #print("PRE ACT ROBOT: px %.2f py %.2f vx %.2f vy %.2f v %.2f radius %.2f", rstate.px, rstate.py, rstate.vx, rstate.vy, np.sqrt(rstate.vx**2 + rstate.vy**2), rstate.radius)
+                action = self.robot.act(ob, self.env.orca_border, baseline=baseline)
+                #print("ACTION: ", action)
+                #print("ACTION IN EXPLORER: ", action)
+                rstate = self.robot.get_full_state()
+                #print("POST ACT ROBOT: px %.2f py %.2f vx %.2f vy %.2f v %.2f radius %.2f", rstate.px, rstate.py, rstate.vx, rstate.vy, np.sqrt(rstate.vx**2 + rstate.vy**2), rstate.radius)
+                #print("ENV SFM BORDER: ", self.env.orca_border)
+                ob, reward, done, info = self.env.step(action, baseline=baseline)
+                new_pos = [self.robot.get_full_state().px, self.robot.get_full_state().py]
+                path_length = path_length + np.sqrt((new_pos[0] - prev_pos[0])**2 + (new_pos[1] - prev_pos[1])**2)
                 states.append(self.robot.policy.last_state)
                 actions.append(action)
                 rewards.append(reward)
+
+                diff = (rstate.gx - rstate.px)**2 + (rstate.gy - rstate.py)**2
+                pis.append(self.compute_path_irregularity(action, ActionXY((rstate.gx - rstate.px) / diff, (rstate.gy - rstate.py) / diff)))
 
                 if isinstance(info, Discomfort):
                     discomfort += 1
@@ -59,14 +94,30 @@ class Explorer(object):
             if isinstance(info, ReachGoal):
                 success += 1
                 success_times.append(self.env.global_time)
+                timesteps.append(self.env.num_steps)
+                min_distances.append(self.env.min_dist_sum)
+                min_distances_overall.append(self.env.min_dist_overall)
+                average_accelerations.append(sum(self.env.robot_accelerations) / len(self.env.robot_accelerations))
+                average_path_irregularity.append(sum(pis) / path_length)
+                #print(self.env.robot_accelerations)
             elif isinstance(info, Collision):
                 collision += 1
                 collision_cases.append(i)
                 collision_times.append(self.env.global_time)
+                timesteps.append(self.env.num_steps)
+                #min_distances.append(self.env.min_dist_sum)
+                #min_distances_overall.append(self.env.min_dist_overall)
+                #average_accelerations.append(sum(self.env.robot_accelerations) / len(self.env.robot_accelerations))
+                #print(self.env.robot_accelerations)
             elif isinstance(info, Timeout):
                 timeout += 1
                 timeout_cases.append(i)
                 timeout_times.append(self.env.time_limit)
+                #timesteps.append(self.env.num_steps)
+                #min_distances.append(self.env.min_dist_sum)
+                #min_distances_overall.append(self.env.min_dist_overall)
+                #average_accelerations.append(sum(self.env.robot_accelerations) / len(self.env.robot_accelerations))
+                #print(self.env.robot_accelerations)
             else:
                 raise ValueError('Invalid end signal from environment')
 
@@ -88,27 +139,76 @@ class Explorer(object):
                 pbar.update(1)
         success_rate = success / k
         collision_rate = collision / k
+        timeout_rate = timeout / k
+
+        if success == 0:
+            stats = 0.0, 0.0, 0.0, 0.0, 0.0
+            exp_stats = 0.0, 0.0 ,0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+            return stats, exp_stats
+
+        average_acceleration = sum(average_accelerations) / success
+        #print("AVERAGE ACCELERATIONS: ", average_accelerations)
+
+        #print("SUCCESS: ", success, " COLLISIONS: ", collision, " TIMEOUT: ", timeout)
         assert success + collision + timeout == k
-        avg_nav_time = sum(success_times) / len(success_times) if success_times else self.env.time_limit
+        avg_nav_time = sum(success_times) / success
+
+        avg_min_dist = sum(min_distances) / sum(timesteps)
+        #print("TIMESTEPS: ", timesteps, " VS SUM TIMESTEPS: ", sum(timesteps))
+        avg_min_dist_overall = sum(min_distances_overall) / success
+        avg_pi = sum(average_path_irregularity) / success
+        diff_accel = 0.0
+        diff_dist = 0.0
+        diff_time = 0.0
+        diff_dist_overall = 0.0
+        diff_pi = 0.0
+
+        for i in range(len(success_times)):
+            diff_accel = diff_accel + (average_accelerations[i] - average_acceleration)**2
+            diff_dist = diff_dist + ((min_distances[i] / timesteps[i]) - avg_min_dist)**2
+            diff_dist_overall = diff_dist_overall + (min_distances_overall[i] - avg_min_dist_overall)**2
+            diff_pi = diff_pi + (average_path_irregularity[i] - avg_pi)**2
+        avg_accel_std = np.sqrt(diff_accel / success)
+        min_dist_std = np.sqrt(diff_dist / success)
+        min_dist_overall_std = np.sqrt(diff_dist_overall / success)
+        avg_pi_std = np.sqrt(diff_pi / success)
+        for i in range(len(success_times)):
+            diff_time = diff_time + (success_times[i] - avg_nav_time)**2
+        nav_time_std = np.sqrt(diff_time / len(success_times)) if success_times else self.env.time_limit
+
+        success_std = np.sqrt(success_rate * (1 - success_rate))
+        collision_std = np.sqrt(collision_rate * (1 - collision_rate))
+        timeout_std = np.sqrt(timeout_rate * (1 - timeout_rate))
 
         extra_info = '' if episode is None else 'in episode {} '.format(episode)
         extra_info = extra_info + '' if epoch is None else extra_info + ' in epoch {} '.format(epoch)
-        logging.info('{:<5} {}has success rate: {:.2f}, collision rate: {:.2f}, nav time: {:.2f}, total reward: {:.4f},'
-                     ' average return: {:.4f}'. format(phase.upper(), extra_info, success_rate, collision_rate,
-                                                       avg_nav_time, average(cumulative_rewards),
-                                                       average(average_returns)))
+        #logging.info('{:<5} {}has success rate: {:.2f}, collision rate: {:.2f}, nav time: {:.2f}, total reward: {:.4f},'
+        #             ' average return: {:.4f}'. format(phase.upper(), extra_info, success_rate, collision_rate,
+        #                                               avg_nav_time, average(cumulative_rewards),
+        #                                               average(average_returns)))
+        
+        #logging.info('Average minimum distance to pedestrian: %.2f with std: %.2f and overall %.2f with std %.2f', avg_min_dist, min_dist_std, avg_min_dist_overall, min_dist_overall_std)
+        #logging.info('Average nav time std: %.2f, success rate std: %.2f, collision rate std: %.2f, timeout rate std: %.2f', nav_time_std, success_std, collision_std, timeout_std)
+        #logging.info('Average acceleration: %.2f with std: %.2f', average_acceleration, avg_accel_std)
+
         if phase in ['val', 'test']:
             total_time = sum(success_times + collision_times + timeout_times)
-            logging.info('Frequency of being in danger: %.2f and average min separate distance in danger: %.2f',
-                         discomfort / total_time, average(min_dist))
+            #logging.info('Frequency of being in danger: %.2f and average min separate distance in danger: %.2f',
+            #             discomfort / total_time, average(min_dist))
 
-        if print_failure:
-            logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
-            logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
+        #if print_failure:
+            #logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
+            #logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
+            
 
         self.statistics = success_rate, collision_rate, avg_nav_time, average(cumulative_rewards), average(average_returns)
+        self.exp_stats = success_rate, success_std, collision_rate, collision_std, timeout_rate, timeout_std, avg_nav_time, nav_time_std, avg_min_dist, min_dist_std, average_acceleration, avg_accel_std, avg_min_dist_overall, min_dist_overall_std, avg_pi, avg_pi_std
 
-        return self.statistics
+        return self.statistics, self.exp_stats
+    
+    def calculate_metric_std(self, timesteps, min_distances, success_times):
+        k = len(timesteps)
+
 
     def update_memory(self, states, actions, rewards, imitation_learning=False):
         if self.memory is None or self.gamma is None:

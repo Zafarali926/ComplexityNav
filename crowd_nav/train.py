@@ -61,7 +61,7 @@ def main(args):
     args.config = os.path.join(args.output_dir, 'config.py')
     log_file = os.path.join(args.output_dir, 'output.log')
     il_weight_file = os.path.join(args.output_dir, 'il_model.pth')
-    rl_weight_file = os.path.join(args.output_dir, 'rl_model.pth')
+    rl_weight_file = os.path.join(args.output_dir, 'rl_model_9.pth')
 
     spec = importlib.util.spec_from_file_location('config', args.config)
     if spec is None:
@@ -206,7 +206,9 @@ def main(args):
             trainer.update_target_model(model)
         # evaluate the model
         if episode % evaluation_interval == 0:
-            _, _, _, reward, _ = explorer.run_k_episodes(env.case_size['val'], 'val', episode=episode)
+            #_, _, _, reward, _ = explorer.run_k_episodes(env.case_size['val'], 'val', episode=episode)
+            stats, _ = explorer.run_k_episodes(env.case_size['val'], 'val', episode=episode)
+            reward = stats[3]
             explorer.log('val', episode // evaluation_interval)
 
             if episode % checkpoint_interval == 0 and reward > best_val_reward:

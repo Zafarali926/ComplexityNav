@@ -4,22 +4,59 @@ Never Modify this file! Always copy the settings you want to change to your loca
 
 
 import numpy as np
-
+import os
+import yaml
 
 class Config(object):
     def __init__(self):
         pass
 
+class BaseExperimentsConfig(object):
+    exp = Config()
+
+    exp.num_orca = [[[2], [5], [7], [10], [12], [15], [17]], [[1], [2], [2], [3], [3], [4], [4]], [[7], [7], [7], [7], [7]], [[0], [15], [7], [5], [4]]]
+    exp.num_sf = [[[3], [5], [8], [10], [13], [15], [18]], [[2], [2], [3], [3], [4], [4], [5]], [[8], [8], [8], [8], [8]], [[15], [0], [8], [5], [4]]]
+
+    #exp.num_orca = [[[5], [10], [15], [20], [25], [30], [35]], [[1], [2], [2], [3], [3], [4], [4]], [[7], [7], [7], [7], [7]], [[0], [15], [7], [5], [4]]]
+    #exp.num_sf = [[[0], [0], [0], [0], [0], [0], [0]], [[2], [2], [3], [3], [4], [4], [5]], [[8], [8], [8], [8], [8]], [[15], [0], [8], [5], [4]]]
+    exp.num_linear = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [2], [4]]]
+    exp.num_static = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [3], [3]]]
+
+    exp.randomize_attributes = [[False, False, False, False, False, False, False], [False, False, False, False, False, False, False], [False, False, False, False, False], [False, False, False, False, False]]
+    
+    exp.scenarios = [['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing'],
+                             ['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing'],
+                             ['passing', 'crossing', 'passing_crossing', 'random', 'circle_crossing'],
+                             ['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing']]
+    
+    exp.parameter_sweep = None
+    exp.sigma = [0.3, 0.6, 0.9]
+    exp.q = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    
+    exp.dx = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-0.75, 0.75], [-1, 1], [-1.25, 1.25], [-1.5, 1.5], [-1.75, 1.75], [-2, 2], [-2.25, 2.25]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
+    exp.dy = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
+    
+    exp.parameter_sweep = None
+    exp.sigma = [0.3, 0.6, 0.9]
+    exp.q = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    exp.noise = [1.0, 2.0, 3.0, 4.0, 5.0]
+    exp.samples = [100, 250, 500, 1000]
+    exp.horizon = [3, 4, 5, 6, 7]
+    
+    def __init__(self, debug=False):
+        pass
 
 class BaseEnvConfig(object):
     env = Config()
     env.time_limit = 30
     env.time_step = 0.25
-    env.val_size = 100
+    env.val_size = 500
     env.test_size = 500
     env.train_size = np.iinfo(np.uint32).max - 2000
     env.randomize_attributes = False
     env.robot_sensor_range = 5
+    env.dx_range = [-5, 5]
+    env.dy_range = [-5, 5]
 
     reward = Config()
     reward.success_reward = 1
@@ -28,27 +65,48 @@ class BaseEnvConfig(object):
     reward.discomfort_penalty_factor = 0.5
 
     sim = Config()
-    sim.train_val_scenario = 'circle_crossing'
-    sim.test_scenario = 'circle_crossing'
-    sim.square_width = 20
+    sim.train_val_scenario = 'passing_crossing'
+    sim.test_scenario = 'passing_crossing'
+    sim.square_width = 10
     sim.circle_radius = 4
     sim.human_num = 5
-    sim.nonstop_human = False
+    sim.nonstop_human = True
     sim.centralized_planning = True
+    sim.multi_policy = True
+    sim.random_seed = False
 
     humans = Config()
     humans.visible = True
-    humans.policy = 'orca'
+    humans.policy = 'multipolicy'
     humans.radius = 0.3
     humans.v_pref = 1
     humans.sensor = 'coordinates'
+    humans.num_sf = [4]
+    humans.num_orca = [4]
+    humans.num_static = [3]
+    humans.num_linear = [4]
+    humans.num_sf_orca = None
+    humans.num_linear_static = None
 
     robot = Config()
-    robot.visible = False
+    robot.visible =True
     robot.policy = 'none'
     robot.radius = 0.3
-    robot.v_pref = 1
+    robot.v_pref = 1.0
     robot.sensor = 'coordinates'
+    robot.reactive = True
+
+    MPC = Config()
+    MPC.model = 'sgan_mppi'
+    MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan_mppi.yaml'
+    with open(MPC.path, "r") as fin:
+        MPC.mpc = yaml.safe_load(fin)
+    print("MPC: ", MPC.mpc)
+    MPC.mpc['params']['dt'] = 0.25
+    MPC.mpc['params']['prediction_length'] = 1.25
+    MPC.save_path = "REAL_WORLD"
+    MPC.exp_name = "REAL_WORLD"
+    MPC.multiagent_training = True
 
     def __init__(self, debug=False):
         if debug:
