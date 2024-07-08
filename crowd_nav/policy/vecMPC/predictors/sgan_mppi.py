@@ -69,7 +69,6 @@ class SGAN_MPPI(CV_MPPI):
         indexes = torch.flip(torch.arange(
             len(trajectory)-1, -1, -self.iskip, device=self.device)[:self.history_length+1], dims=(0,))
         trajectory = trajectory[indexes, :, :2] # (T'+1) x (1+H) x 2
-        #print("TRAJECTORY INPUT SHAPE: ", trajectory.shape)
         if len(trajectory) <= 1:
             trajectory = torch.nn.functional.pad(trajectory, (0, 0, 0, 0, 1, 0), mode='constant')
         obs_traj = trajectory[1:] # T' x (1+H) x 2
@@ -96,13 +95,9 @@ class SGAN_MPPI(CV_MPPI):
         return new_traj[:, :, 1:self.prediction_length+1]
 
     def get_predictions(self, trajectory):
-        #print("GETTING SGAN PREDICTION")
         with torch.no_grad():
-            #print("trajectory: ", trajectory.shape)
-            #print("actions: ", actions.shape)
             trajectory = torch.tensor(trajectory, device='cuda:0', dtype=torch.float)
             obs_traj, obs_traj_rel = self.create_input(trajectory)
-            #print("OBS TRAJ SHAPE: ", obs_traj.shape, obs_traj_rel.shape)
             seq_start_end = torch.tensor(
                 [[0, obs_traj.shape[1]]], dtype=torch.int, device='cuda:0')
             noise = None
@@ -110,7 +105,6 @@ class SGAN_MPPI(CV_MPPI):
                 noise = torch.ones((obs_traj.shape[0],)+self.generator.noise_dim, device='cuda:0')
             pred_traj_fake_rel = self.generator(
                 obs_traj, obs_traj_rel, seq_start_end, self.num_samples, noise)
-            #print("GENERATOR OUTPUT: ", pred_traj_fake_rel.shape)
             pred_traj_fake = optimized_relative_to_abs(
                 pred_traj_fake_rel, obs_traj[-1])[None] # N x S x T'' x (1+H) x 2
                                                                                                                     # rospy.loginfo("from model: {}".format(pred_traj_fake.shape))
@@ -122,9 +116,6 @@ class SGAN_MPPI(CV_MPPI):
 
             self.ego_traj_fake = pred_traj_fake[:, :, :, 0].cpu().numpy() # N x S x T' x 2
             pred_traj_fake = pred_traj_fake[:, :, :, 1:].cpu()
-        #print("DONE SGAN PREDICTION")
-
-            #print("PRED TRAJ FAKE: ", pred_traj_fake.shape)
                                                                                                                     # rospy.loginfo("final_pred: {}\n\n".format(pred_traj_fake.shape))
         #return pred_traj_fake.cpu().numpy()  # N x S x T' x H x 4
         return pred_traj_fake
@@ -139,7 +130,6 @@ class SGAN_MPPI(CV_MPPI):
         predictions = self.get_predictions(trajectory, actions)[0,:, None] # N x S x T' x H x 4
         actions = self.ego_traj_fake[0]
 
-        #print("ACTIONS: ", actions)
 
         actions[2:] *= 5
         
@@ -150,5 +140,4 @@ class SGAN_MPPI(CV_MPPI):
         best_action_idx = np.argmin(np.mean(c_total, axis=-1))
         best_action = actions[best_action_idx][0]
         # rospy.loginfo("{} {} {}\n\n\n".format(actions.shape, self.ego_traj_fake.shape, best_action.shape))
-        #print("SGAN PREDICTION")
         return predictions, c_total, actions, best_action 

@@ -43,21 +43,14 @@ class CV(object):
         pass
 
     def get_predictions(self, trajectory, actions):
-        #print("Actions shape: ", actions.shape)
-        #print("Actions: ", actions)
         velocity = trajectory[None, -1, 1:, 2:4]  # 1 x H x 2
         init_pos = trajectory[None, -1, 1:, 0:2]  # 1 x H x 2
-        #print("Velocity shape: ", velocity.shape)
-        #print("Velocity: ", velocity)
-        #print("Init pos shape: ", init_pos.shape)
-        #print("Init pos: ", init_pos)
+
         steps = 1 + np.arange(self.prediction_length, dtype=np.float64)[:, None, None]  # T' x 1 x 1
  #       rospy.loginfo("1: {}".format(steps.shape))
         steps = np.multiply(velocity, steps) * self.dt  # T' x H x 2
         steps = (init_pos + steps)[None, None] # N x S x T' x H x 2
         steps = np.concatenate((steps[:, :, :-1], self.predict_velocity(steps)), axis=-1) # N x S x T' x H x 4
-        #print("Steps shape: ", steps.shape)
-        #print("Steps: ", steps)
 #        rospy.loginfo("{} {}\n\n".format(steps.shape, self.prediction_length))
         return steps
     
@@ -66,8 +59,6 @@ class CV(object):
 
     def predict(self, trajectory, state, actions, goal): # (T x (1+H) x 5), ((1+H) x 5), (N x T' x 2), (2, )
         predictions = self.get_predictions(trajectory, actions) # N x S x T' x H x 4
-        #print("PREDICTIONS: ", predictions.shape)
-        #print("ACTIONS: ", actions.shape)
 
         c_goal = self.goal_cost(state, actions, goal)
         c_obs = self.obstacle_cost(state, actions, predictions)
@@ -75,15 +66,9 @@ class CV(object):
         #c_predictor = self.predictor_cost(state, actions, predictions)
         #c_total = c_goal + c_obs + c_discrete + c_predictor
         c_total = c_goal + c_obs
-
-        #print("CGOAL: ", c_goal.shape, c_goal)
-        #print("C OBS" , c_obs.shape, c_obs)
-        #print("C TOTAL: ", c_total)
         
         best_action_idx = np.argmin(np.mean(c_total, axis=-1))
-        #print("ACTIONS: ", actions)
         best_action = actions[best_action_idx][0]
-        #print("BEST ACTION: ", best_action, actions[best_action_idx])
 
         # if self.log_cost:
         #     rospy.loginfo("type: \t\t goal \t\t obs \t\t discrete \t\t dev")
@@ -97,8 +82,6 @@ class CV(object):
 
     def goal_cost(self, state, actions, goal):
         """Ratio of extra distance that needs to be travelled towards the goal"""
-        #print("IN GOAL COST STATE: ", state.shape, state)
-        #print("IN GOAL COST STATE: ", state.shape, actions, goal.shape)
         init_dist = np.linalg.norm(goal-state[0, :2])
         dist = np.linalg.norm(goal[None, None]-actions[:, :, :2], axis=-1) # (N x T')
         st_dist = np.clip(self.vpref * self.dt * np.arange(1, self.prediction_length), 0, init_dist)
@@ -115,51 +98,19 @@ class CV(object):
         dx = actions[:, None, :, None, 0] - predictions[:, :, :, :, 0] #- (state[None, None, None, 1:, 4] + state[0, 4]) # N x S x T' x H
         dy = actions[:, None, :, None, 1] - predictions[:, :, :, :, 1] #- (state[None, None, None, 1:, 4] + state[0, 4]) # N x S x T' x H
 
-        #print("actions predictions: ", actions.shape, predictions.shape, dx.shape, dy.shape, actions[:, None, :, None, 0].shape, predictions[:, :, :, :, 0].shape)
-        #print(actions)
-
-        # print("ACTIONS FILTERED: ", actions[:, None, :, None, 0].shape, actions[:, None, :, None, 0])
-        # print("PREDICTIONS FILTERED: ", predictions[:, :, :, :, 0].shape, predictions[:, :, :, :, 0])
-        # print("STATE FILTERED: ", state[None, None, None, 1:, 4].shape, state[None, None, None, 1:, 4])
-        # print("STATE ADD: ", state[0, 4])
-        # print("DX: ", dx)
-        # print("DY: ", dy)
-
-        #norms = (dx * dx + dy * dy)
-        #norms = np.sqrt(norms)
-        #norms = norms / np.max(norms, axis=0)
-        #norms = np.exp(1 - norms)
-        #print("NORMS SHAPE: ", norms.shape)
-        #penalty = np.linspace(1, norms.shape[2], norms.shape[2])
-        #penalty = np.power(np.ones_like(penalty) * 0.9, penalty)
-        #print("PENALTY: ", penalty.reshape((1, 1, norms.shape[2], 1)))
-
-        #print("NORMS: ", norms)
-        #norm_mins = np.min(norms, axis=3)
-        #print("NORM MINS PRE PENALTY: ", norm_mins)
-        #norm_mins = norm_mins * penalty
-        #print("NORM MINS: ", norm_mins)
-        #norm_min_sum = np.sum(norm_mins, axis=2)
-        #print("NORM MIN SUM: ", norm_min_sum)
                                                                                                                                                                                                             # rospy.loginfo(" dx:{} dy:{}".format(dx.shape, dy.shape))
         # Heading of "other agent"
         obs_theta = np.arctan2(predictions[:, :, :, :, 3], predictions[:, :, :, :, 2]) # N x S x T' x H
-        #print("OBS THETA: ", obs_theta)
         # Checking for static obstacles
         static_obs = (np.linalg.norm(predictions[:, :, :, :, 2:4], axis=-1) < 0.01) # N x S x T' x H
-        #print("STATIC OBS: ", static_obs)
         # Alpha calculates whether ego agent is in front or behind "other agent"
         alpha = self.wrap(np.arctan2(dy, dx) - obs_theta + np.pi/2.0) <= 0 # N x S x T' x H
-        #print("ALPHA: ", alpha)
                                                                                                                                                                                                             # rospy.loginfo(" obs_theta:{} static_obs:{} alpha:{}".format(obs_theta.shape, static_obs.shape, alpha.shape))
 
         # Sigma values used to create 2D gaussian around obstacles for cost penalty
         sigma = np.where(alpha, self.sigma_r, self.sigma_h)
-        #print("SIGMA FIRST: ", sigma)
         sigma = static_obs + np.multiply(1-static_obs, sigma) # N x S x T' x H
-        #print("SIGMA SECOND: ", sigma)
         sigma_s = 1.0 * static_obs + self.sigma_s * (1 - static_obs) # N x S x T' x H
-        #print("SIGMA S: ", sigma_s)
                                                                                                                                                                                                             # rospy.loginfo("s:{} ss:{}".format(sigma.shape, sigma_s.shape))
 
         # Variables used in cost_obs function based on sigma and obs_theta
@@ -167,19 +118,10 @@ class CV(object):
         b = np.sin(2 * obs_theta) / (4 * sigma ** 2) - np.sin(2 * obs_theta) / (4 * sigma_s ** 2)
         c = np.sin(obs_theta) ** 2 / (2 * sigma ** 2) + np.cos(obs_theta) ** 2 / (2 * sigma_s ** 2)
 
-        #print("A: ", a, " B: ", b, " C: ", c)
-
-        #print("FIRST TERM: ", (a * dx ** 2), " SECOND TERM: ", (2 * b * dx * dy), " THIRD TERM: ", (c * dy ** 2))
-
         cost = np.exp(-((a * dx ** 2) + (2 * b * dx * dy) +  (c * dy ** 2))) # N x S x T' x H
-        #print("COST AFTER EXP: ", cost.shape)
         cost = np.mean(cost, axis=3)
-        #print("COST AFTER MEAN: ", cost.shape)
         cost = np.sum(cost, axis=-1)
         cost = -1 * cost
-        #print("COST SHAPE: ", cost.shape)
-        #print("NORMS SHAPE: ", norm_min_sum)
-        #cost = norm_min_sum
                                                                                                                                                                                                             # rospy.loginfo("c: {}\n\n".format(cost.shape))
         return self.Q_obs * (cost ** 2) # (N, S)
     
