@@ -14,6 +14,7 @@ from crowd_sim.envs.policy.orca import ORCA
 import random
 import time
 from numpy.linalg import norm
+import json
 
 def main_experiments(args):
 
@@ -292,6 +293,11 @@ def main_experiments(args):
                         plt.savefig(os.path.join(args.model_dir, 'test_scene_hist.png'))
                         plt.close()
 
+            with open(args.results_file, "w") as results:
+                json.dump(exp_stats_list, results)
+
+            
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse configuration file')
     parser.add_argument('--config', type=str, default=None)
@@ -308,6 +314,7 @@ if __name__ == '__main__':
     parser.add_argument('--scenario', type=str, default='circle')
     parser.add_argument('--video_file', type=str, default=None)
     parser.add_argument('--video_dir', type=str, default='./')
+    parser.add_argument('--results_file', type=str, default='results.json')
     parser.add_argument('--traj', default=False, action='store_true')
     parser.add_argument('--debug', default=False, action='store_true')
     parser.add_argument('--human_num', type=int, default=None)

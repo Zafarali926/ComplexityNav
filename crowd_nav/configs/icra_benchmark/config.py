@@ -41,7 +41,7 @@ class BaseExperimentsConfig(object):
     exp.samples = [100, 250, 500, 1000]
     exp.horizon = [3, 4, 5, 6, 7]
 
-    exp.random_seed = True
+    exp.random_seed = False
     
     def __init__(self, debug=False):
         pass
@@ -51,9 +51,9 @@ class BaseEnvConfig(object):
     env.time_limit = 30
     env.time_step = 0.25
     env.val_size = 500
-    env.test_size = 2
+    env.test_size = 500
     env.train_size = np.iinfo(np.uint32).max - 2000
-    env.randomize_attributes = False
+    env.randomize_attributes = False #TODO: Make this work with pre-generating scenarios
     env.robot_sensor_range = 5
     env.dx_range = [-5, 5]
     env.dy_range = [-5, 5]
@@ -73,7 +73,7 @@ class BaseEnvConfig(object):
     sim.nonstop_human = True
     sim.centralized_planning = True
     sim.multi_policy = True
-    sim.random_seed = True #Should match the setting of exp.random_seed
+    sim.random_seed = False #Should match the setting of exp.random_seed
 
     humans = Config()
     humans.visible = True

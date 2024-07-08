@@ -181,7 +181,7 @@ def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, 
 
         return states
 
-def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2):
+def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not work with randomized radii yet, fixed at 0.3m for now
     if ec.exp.random_seed:
         seed = np.random.randint(1000, 10000)
     else:

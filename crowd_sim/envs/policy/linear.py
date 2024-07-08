@@ -9,6 +9,7 @@ class Linear(Policy):
         self.trainable = False
         self.kinematics = 'holonomic'
         self.multiagent_training = True
+        self.name = 'linear'
 
     def configure(self, config):
         assert True
