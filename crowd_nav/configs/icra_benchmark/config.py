@@ -17,8 +17,6 @@ class BaseExperimentsConfig(object):
     exp.num_orca = [[[2], [5], [7], [10], [12], [15], [17]], [[1], [2], [2], [3], [3], [4], [4]], [[7], [7], [7], [7], [7]], [[0], [15], [7], [5], [4]]]
     exp.num_sf = [[[3], [5], [8], [10], [13], [15], [18]], [[2], [2], [3], [3], [4], [4], [5]], [[8], [8], [8], [8], [8]], [[15], [0], [8], [5], [4]]]
 
-    #exp.num_orca = [[[5], [10], [15], [20], [25], [30], [35]], [[1], [2], [2], [3], [3], [4], [4]], [[7], [7], [7], [7], [7]], [[0], [15], [7], [5], [4]]]
-    #exp.num_sf = [[[0], [0], [0], [0], [0], [0], [0]], [[2], [2], [3], [3], [4], [4], [5]], [[8], [8], [8], [8], [8]], [[15], [0], [8], [5], [4]]]
     exp.num_linear = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [2], [4]]]
     exp.num_static = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [3], [3]]]
 
@@ -42,6 +40,8 @@ class BaseExperimentsConfig(object):
     exp.noise = [1.0, 2.0, 3.0, 4.0, 5.0]
     exp.samples = [100, 250, 500, 1000]
     exp.horizon = [3, 4, 5, 6, 7]
+
+    exp.random_seed = True
     
     def __init__(self, debug=False):
         pass
@@ -51,7 +51,7 @@ class BaseEnvConfig(object):
     env.time_limit = 30
     env.time_step = 0.25
     env.val_size = 500
-    env.test_size = 500
+    env.test_size = 2
     env.train_size = np.iinfo(np.uint32).max - 2000
     env.randomize_attributes = False
     env.robot_sensor_range = 5
@@ -73,7 +73,7 @@ class BaseEnvConfig(object):
     sim.nonstop_human = True
     sim.centralized_planning = True
     sim.multi_policy = True
-    sim.random_seed = False
+    sim.random_seed = True #Should match the setting of exp.random_seed
 
     humans = Config()
     humans.visible = True
@@ -97,8 +97,8 @@ class BaseEnvConfig(object):
     robot.reactive = True
 
     MPC = Config()
-    MPC.model = 'sgan_mppi'
-    MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan_mppi.yaml'
+    MPC.model = 'sgan' #Change to sgan/cv for mpc methods
+    MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan.yaml' #Change to sgan/cv for mpc methods
     with open(MPC.path, "r") as fin:
         MPC.mpc = yaml.safe_load(fin)
     print("MPC: ", MPC.mpc)

@@ -32,12 +32,8 @@ class CentralizedMultiPolicy(Policy):
         centralized_orca = CentralizedORCA()
         linear = Linear()
 
-        #print("PREDICTING SF")
-
         sf_actions = centralized_sf.predict(state, sfm_border)
-        #sf_actions = []
 
-        #print("PREDICTING ORCA")
         orca_actions = centralized_orca.predict(state, orca_border)
 
 
@@ -45,14 +41,10 @@ class CentralizedMultiPolicy(Policy):
             actions = []
             for i in range(len(policies)):
                 if isinstance(policies[i], SocialForce):
-                    #print("APPENDING SOCIAL FORCE ACTION")
                     actions.append(sf_actions[i])
                 elif isinstance(policies[i], ORCA):
-                    #print("APPENDING ORCA ACTION")
                     actions.append(orca_actions[i])
                 elif isinstance(policies[i], Linear):
                     actions.append(linear.predict(state[i]))
-
-            #print("ACTIONS: ", actions)
 
         return actions, [sf_actions[-1], orca_actions[-1]]

@@ -241,19 +241,11 @@ class ModelPredictiveRL(Policy):
                     reward_est = self.estimate_reward(state, action)
                     value = reward_est + self.get_normalized_gamma() * max_next_return
                     if value > max_value:
-                        #print("NEXT STATE: ", next_state, next_state[0], next_state[1])
-                        #print("BORDER: ", next_state[0][0][0][0])
                         pos = [next_state[0][0][0][0].tolist(), next_state[0][0][0][1].tolist()]
-                        #print(pos)
-                        #if border is not None and self.outside_check(pos, radius, border):
-                            #print("OUTSIDE CHECK FAILED")
-                            #continue
                         max_value = value
                         max_action = action
-                        #print("POS: ", pos)
                         max_traj = [(state_tensor, action, reward_est)] + max_next_traj
             elif baseline == 'reactive':
-                #print("REACTIVE ACTION")
                 for action in action_space_clipped:
                     reward_est = self.estimate_reward_reactive(state, action)
                     if reward_est > max_value:
@@ -261,58 +253,22 @@ class ModelPredictiveRL(Policy):
                         next_state = self.state_predictor(state_tensor, action)
                         max_next_return, max_next_traj = self.V_planning(next_state, self.planning_depth, self.planning_width)
                         pos = [next_state[0][0][0][0].tolist(), next_state[0][0][0][1].tolist()]
-                        #print(pos)
-                        #if border is not None and self.outside_check(pos, radius, border):
-                            #print("OUTSIDE CHECK FAILED")
-                            #continue
                         max_value = reward_est
                         max_action = action
                         max_traj = [(state_tensor, action, reward_est)] + max_next_traj
             elif baseline == 'sfm':
-                '''
-                sf_state = []
-                self_state = state.robot_state
-                sf_state.append((self_state.px, self_state.py, self_state.vx, self_state.vy, self_state.gx, self_state.gy))
-                for human_state in state.human_states:
-                    # approximate desired direction with current velocity
-                    if human_state.vx == 0 and human_state.vy == 0:
-                        gx = np.random.random()
-                        gy = np.random.random()
-                    else:
-                        gx = human_state.px + human_state.vx
-                        gy = human_state.py + human_state.vy
-                    sf_state.append((human_state.px, human_state.py, human_state.vx, human_state.vy, gx, gy))
-                sim = socialforce.Simulator(np.array(sf_state), delta_t=self.time_step, initial_speed=self.initial_speed,
-                                            v0=self.v0, sigma=self.sigma)
-                sim.step()
-                action = ActionXY(sim.state[0, 2], sim.state[0, 3])
-
-                self.last_state = state
-
-                return action
-                '''
                 sf = SocialForce()
                 action = sf.predict(state, border=border)
-                #state_tensor = state.to_tensor(add_batch_size=True, device=self.device)
-                #next_state = self.state_predictor(state_tensor, action)
-                #max_next_return, max_next_traj = self.V_planning(next_state, self.planning_depth, self.planning_width)
-                #max_traj = [(state_tensor, action, 1.00)] + max_next_traj
-                #return action
                 max_action = action
             elif baseline == 'orca':
                 orca = ORCA()
                 action = orca.predict(state, border=border)
-                #return action
                 max_action = action
             elif baseline == 'cv':
                 self_state = state.robot_state
                 dist = np.sqrt((self_state.px - self_state.gx)**2 + (self_state.py - self_state.gy)**2)
-                #max_action = ActionXY((self_state.gx - self_state.px) / dist, (self_state.gy - self_state.py) / dist)
                 max_action = ActionXY(0.0, 1.0)
-                #print("CV MAX ACTION: ", max_action)
-
             if max_action is None:
-                #raise ValueError('Value network is not well trained.')
                 max_action = ActionXY(0.0, 0.0)
 
         if self.phase == 'train':
@@ -320,13 +276,8 @@ class ModelPredictiveRL(Policy):
         else:
             self.traj = max_traj
 
-        #state_tensor = state.to_tensor(add_batch_size=True, device=self.device)
-        #next_state = self.state_predictor(state_tensor, max_action)
-        #pos = [next_state[0][0][0][0].tolist(), next_state[0][0][0][1].tolist()]
         self_state = state.robot_state
         pos = [self_state.px + max_action.vx * self.time_step, self_state.py + max_action.vy * self.time_step]
-        #if border is not None and self.outside_check(pos, radius, border):
-            #max_action = ActionXY(0.0, 0.0)
 
         return max_action
 
@@ -356,7 +307,6 @@ class ModelPredictiveRL(Policy):
             max_indexes = np.argpartition(np.array(values), -width)[-width:]
             clipped_action_space = [action_space[i] for i in max_indexes]
 
-        # print(clipped_action_space)
         return clipped_action_space
 
     def V_planning(self, state, depth, width):

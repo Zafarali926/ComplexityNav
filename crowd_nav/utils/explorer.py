@@ -19,7 +19,6 @@ class Explorer(object):
         self.target_policy = target_policy
         self.statistics = None
         self.scenarios = scenarios
-        #print("SCENARIOS IS: ", scenarios)
 
     def compute_path_irregularity(self, action, direct_action):
         a = np.arctan2(action.vx, action.vy)
@@ -55,10 +54,8 @@ class Explorer(object):
 
         for i in range(k):
             if self.scenarios is not None:
-                #print("SCENARIOS NOT NONE")
                 ob = self.env.reset(phase, self.scenarios[i])
             else:
-                #print("SCENARIOS NONE")
                 ob = self.env.reset(phase)
             self.env.scenario_num = self.env.scenario_num + 1
             done = False
@@ -70,13 +67,9 @@ class Explorer(object):
             while not done:
                 rstate = self.robot.get_full_state()
                 prev_pos = [rstate.px, rstate.py]
-                #print("PRE ACT ROBOT: px %.2f py %.2f vx %.2f vy %.2f v %.2f radius %.2f", rstate.px, rstate.py, rstate.vx, rstate.vy, np.sqrt(rstate.vx**2 + rstate.vy**2), rstate.radius)
                 action = self.robot.act(ob, self.env.orca_border, baseline=baseline)
-                #print("ACTION: ", action)
-                #print("ACTION IN EXPLORER: ", action)
                 rstate = self.robot.get_full_state()
-                #print("POST ACT ROBOT: px %.2f py %.2f vx %.2f vy %.2f v %.2f radius %.2f", rstate.px, rstate.py, rstate.vx, rstate.vy, np.sqrt(rstate.vx**2 + rstate.vy**2), rstate.radius)
-                #print("ENV SFM BORDER: ", self.env.orca_border)
+
                 ob, reward, done, info = self.env.step(action, baseline=baseline)
                 new_pos = [self.robot.get_full_state().px, self.robot.get_full_state().py]
                 path_length = path_length + np.sqrt((new_pos[0] - prev_pos[0])**2 + (new_pos[1] - prev_pos[1])**2)
@@ -99,25 +92,16 @@ class Explorer(object):
                 min_distances_overall.append(self.env.min_dist_overall)
                 average_accelerations.append(sum(self.env.robot_accelerations) / len(self.env.robot_accelerations))
                 average_path_irregularity.append(sum(pis) / path_length)
-                #print(self.env.robot_accelerations)
+
             elif isinstance(info, Collision):
                 collision += 1
                 collision_cases.append(i)
                 collision_times.append(self.env.global_time)
                 timesteps.append(self.env.num_steps)
-                #min_distances.append(self.env.min_dist_sum)
-                #min_distances_overall.append(self.env.min_dist_overall)
-                #average_accelerations.append(sum(self.env.robot_accelerations) / len(self.env.robot_accelerations))
-                #print(self.env.robot_accelerations)
             elif isinstance(info, Timeout):
                 timeout += 1
                 timeout_cases.append(i)
                 timeout_times.append(self.env.time_limit)
-                #timesteps.append(self.env.num_steps)
-                #min_distances.append(self.env.min_dist_sum)
-                #min_distances_overall.append(self.env.min_dist_overall)
-                #average_accelerations.append(sum(self.env.robot_accelerations) / len(self.env.robot_accelerations))
-                #print(self.env.robot_accelerations)
             else:
                 raise ValueError('Invalid end signal from environment')
 
@@ -147,14 +131,11 @@ class Explorer(object):
             return stats, exp_stats
 
         average_acceleration = sum(average_accelerations) / success
-        #print("AVERAGE ACCELERATIONS: ", average_accelerations)
 
-        #print("SUCCESS: ", success, " COLLISIONS: ", collision, " TIMEOUT: ", timeout)
         assert success + collision + timeout == k
         avg_nav_time = sum(success_times) / success
 
         avg_min_dist = sum(min_distances) / sum(timesteps)
-        #print("TIMESTEPS: ", timesteps, " VS SUM TIMESTEPS: ", sum(timesteps))
         avg_min_dist_overall = sum(min_distances_overall) / success
         avg_pi = sum(average_path_irregularity) / success
         diff_accel = 0.0
@@ -182,24 +163,9 @@ class Explorer(object):
 
         extra_info = '' if episode is None else 'in episode {} '.format(episode)
         extra_info = extra_info + '' if epoch is None else extra_info + ' in epoch {} '.format(epoch)
-        #logging.info('{:<5} {}has success rate: {:.2f}, collision rate: {:.2f}, nav time: {:.2f}, total reward: {:.4f},'
-        #             ' average return: {:.4f}'. format(phase.upper(), extra_info, success_rate, collision_rate,
-        #                                               avg_nav_time, average(cumulative_rewards),
-        #                                               average(average_returns)))
-        
-        #logging.info('Average minimum distance to pedestrian: %.2f with std: %.2f and overall %.2f with std %.2f', avg_min_dist, min_dist_std, avg_min_dist_overall, min_dist_overall_std)
-        #logging.info('Average nav time std: %.2f, success rate std: %.2f, collision rate std: %.2f, timeout rate std: %.2f', nav_time_std, success_std, collision_std, timeout_std)
-        #logging.info('Average acceleration: %.2f with std: %.2f', average_acceleration, avg_accel_std)
 
         if phase in ['val', 'test']:
             total_time = sum(success_times + collision_times + timeout_times)
-            #logging.info('Frequency of being in danger: %.2f and average min separate distance in danger: %.2f',
-            #             discomfort / total_time, average(min_dist))
-
-        #if print_failure:
-            #logging.info('Collision cases: ' + ' '.join([str(x) for x in collision_cases]))
-            #logging.info('Timeout cases: ' + ' '.join([str(x) for x in timeout_cases]))
-            
 
         self.statistics = success_rate, collision_rate, avg_nav_time, average(cumulative_rewards), average(average_returns)
         self.exp_stats = success_rate, success_std, collision_rate, collision_std, timeout_rate, timeout_std, avg_nav_time, nav_time_std, avg_min_dist, min_dist_std, average_acceleration, avg_accel_std, avg_min_dist_overall, min_dist_overall_std, avg_pi, avg_pi_std

@@ -19,7 +19,6 @@ class Agent(object):
         if policy is None:
             self.policy = policy_factory[getattr(config, section).policy]()
         else:
-            #print("INITIATING AGENT POLICY: ", policy)
             self.policy = policy
         self.sensor = getattr(config, section).sensor
         self.kinematics = self.policy.kinematics if self.policy is not None else None
@@ -66,6 +65,9 @@ class Agent(object):
         if v_pref is not None:
             self.v_pref = v_pref
 
+    def get_set_state(self):
+        return (self.px, self.py, self.gx, self.gy, self.vx, self.vy, self.theta)
+
     def get_observable_state(self):
         return ObservableState(self.px, self.py, self.vx, self.vy, self.radius)
 
@@ -82,7 +84,6 @@ class Agent(object):
         return ObservableState(next_px, next_py, next_vx, next_vy, self.radius)
 
     def get_full_state(self):
-        #print("GETTING FULL STATE")
         return FullState(self.px, self.py, self.vx, self.vy, self.radius, self.gx, self.gy, self.v_pref, self.theta)
 
     def get_position(self):

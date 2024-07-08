@@ -53,7 +53,7 @@ class ORCA(Policy):
 
         """
         super().__init__()
-        self.name = 'ORCA'
+        self.name = 'orca'
         self.trainable = False
         self.multiagent_training = True
         self.kinematics = 'holonomic'

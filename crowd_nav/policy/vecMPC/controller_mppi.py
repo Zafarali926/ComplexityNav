@@ -19,8 +19,6 @@ class vecMPPI(Policy):
 
     def __init__(self, config):
         super().__init__()
-        #print("INITIALIZING VECMPPI")
-        #print("CONFIG: ", config)
 
         #self.model_predictor = eval(config.MPC.mpc["model_predictor"])()
         self.model_predictor = SGAN_MPPI()
@@ -47,8 +45,6 @@ class vecMPPI(Policy):
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        #dx_range = [-5, 5]
-        #dy_range = [-5, 5]
         dx_range = config.env.dx_range
         dy_range = config.env.dy_range
         self.border = [(dx_range[0], dy_range[1]), (dx_range[1], dy_range[1]), (dx_range[1], dy_range[0]), (dx_range[0], dy_range[0])]
@@ -75,16 +71,9 @@ class vecMPPI(Policy):
         return state[:,:2] + action * self.model_predictor.dt
     
     def cost(self, state, action, t):
-        #print("PREDICTIONS SHAPE: ", self.predictions.shape)
-        goal_start_time = time()
         cost_goal = self.model_predictor.goal_cost(state, action, self.goal)
-        goal_end_time = time()
-        #print("GOAL COST TIME: ", goal_end_time - goal_start_time)
         cost_obstacle = self.model_predictor.obstacle_cost(state, action, self.predictions, t).squeeze()
-        #print("OBSTACLE COST TIME: ", time() - goal_end_time)
         cost = cost_goal + cost_obstacle
-        #print("GOALCOST SIZE: ", cost_goal.size(), " OBSTACLE SIZE: ", cost_obstacle.size())
-        #print("STATE: ", state, " ACTION: ", action, " COST: ", cost, " GOAL: ", self.goal)
         return cost
     
     def create_mppi(self):
@@ -108,12 +97,10 @@ class vecMPPI(Policy):
         traj = torch.zeros((horizon, 2))
         for i in range(horizon):
             traj[i] = torch.Tensor(start) + 0.25 * direction
-        #print("NOMINAL TRAJ: ", traj)
         return traj
     
     def update_predictions(self):
         self.predictions = self.model_predictor.get_predictions(self.trajectory)
-        #print("TENSOR DEVICE: ", self.predictions.get_device())
 
     def update_goal(self, goal):
         self.goal = goal
@@ -140,25 +127,17 @@ class vecMPPI(Policy):
         for state in state.human_states:
             arr.append(self.flatten_state(state))
         arr = np.stack(arr, axis=0)
-        #print("ARR SHAPE: ", arr.shape)
         self.trajectory = np.concatenate((self.trajectory, arr[None]), axis=0) if self.trajectory is not None else arr[None]
-        #print("TRAJECTORY SHAPE: ", self.trajectory.shape)
         return arr
 
     # noinspection PyAttributeOutsideInit
     def predict(self, state, border=None, radius=None, baseline=None):
-        #print("PREDICTING IN MPC")
         start_t = time()
         self.pathbot_state = state.robot_state
         self.ego_state = state.robot_state
 
-        #print("ROBOT STATE START OF PREDICT: ", state.robot_state)
-        #for human in state.human_states:
-        #    print("HUMAN STATE IN START OF PREDICT: ", human)
-
         # Initialize sim heading for MPC if first iteration
         if self.sim_heading is None:
-            #self.sim_heading = self.pathbot_state.get_heading()
             self.sim_heading = 0.0
         #else:
             # Set the joint state sim_heading for rollouts
@@ -166,22 +145,13 @@ class vecMPPI(Policy):
             #self.sim_heading = 0.0
 
         array_state = self.update_trajectory(state)
-        #print("ARRAY STATE SHAPE: ", array_state.shape)
         self.logger.update_trajectory(self.trajectory, 0, 0, time())
 
         if self.reach_destination(state):
             return self.action_post_processing([0,0], start_t)
 
         goal = torch.Tensor([self.pathbot_state.gx, self.pathbot_state.gy])
-        #multipliers = [0.1, 0.25, 0.5, 1.0]
-        #action_sets = []
-        #for m in multipliers:
-        #    action_sets.append(self.generate_action_set(self.pathbot_state, self.trajectory, goal, v_pref=self.pathbot_state.v_pref * m))
-        #action_set = np.vstack(tuple(action_sets))
         action_set = self.generate_action_set(self.pathbot_state, self.trajectory, goal, v_pref=self.pathbot_state.v_pref)
-        #print("ACTION SET SHAPE: ", action_set.shape)
-        # (N x S x T' x H x 2), (N x S), (2 x 1)
-        #predictions, costs, action_set, best_action = self.model_predictor.predict(self.trajectory, array_state, action_set, goal)
         self.update_predictions()
         self.update_goal(goal)
         
@@ -195,23 +165,7 @@ class vecMPPI(Policy):
         else:
             mppi_action = ctrl.command(self.flatten_state(self.pathbot_state))
             self.u_prev = mppi_action
-        #print("REFINEMENT TIME: ", time() - start_refine)
-        #self.u_prev = ctrl.U
-        #print("MPPI ACTION: ", mppi_action)
 
-        #self.logger.add_predictions(array_state, action_set, predictions, costs, goal)
-        #print("PREDICTIONS SHAPE: ", predictions.shape)
-        #print(predictions)
-
-        #if self.outside_check([self.pathbot_state.px, self.pathbot_state.py], self.radius, self.border):
-            #print("FAILING OUTSIDE CHECK", self.border)
-            #dist = np.sqrt((self.pathbot_state.gx - self.pathbot_state.px)**2 + (self.pathbot_state.gy - self.pathbot_state.py)**2)
-            # = ActionXY((self.pathbot_state.gx - self.pathbot_state.px) * self.pathbot_state.v_pref / dist, (self.pathbot_state.gy - self.pathbot_state.py) * self.pathbot_state.v_pref / dist)
-            #print("ACtiON WITH FAILED OUTSIDE CHECK IS: ", action)
-            #return ActionXY(0.0, 0.0)
-            #return action
-
-        #return self.action_post_processing(best_action[2:], start_t)
         return self.action_post_processing(mppi_action, start_t)
     
     def outside_check(self, position, radius, obstacle):
@@ -219,7 +173,7 @@ class vecMPPI(Policy):
         right = position[0] + radius > obstacle[1][0]
         below = position[1] - radius < obstacle[2][1]
         above = position[1] + radius > obstacle[1][1]
-        #print(left, right, below, above, radius, position[0], position[1], obstacle)
+
         if ((left or right) or (above or below)):
             return True
 
@@ -242,17 +196,7 @@ class vecMPPI(Policy):
 
     def generate_action_set(self, state, trajectory, goal, v_pref=None):
         """To get actions"""
-        # self.action_params["type"] # TODO: to use multiple actions
-        # Get current (global) state info for ego agent
-        # pos = np.array(state.get_position())
 
-        # sim_heading = state.get_sim_heading()
-        # thetas = [sim_heading-(self.span / 2.0) + i * self.span / (self.n_actions - 1) for i in range(self.n_actions)]
-        # thetas = thetas if len(thetas) > 1 else np.arctan2(goal-pos)
-        # vpref = self.pathbot_state.get_vpref()
-        # goals = pos[:, None] + (vpref * self.model_predictor.prediction_horizon *10) * np.stack((np.cos(thetas), np.sin(thetas)), axis=0) # (2, N)
-
-        # return self.generate_cv_rollout(pos, goals, vpref, self.model_predictor.rollout_steps)
         pos = np.array([state.px, state.py])
         vel = [state.vx, state.vy]
         theta = [0.0, 0.0]
@@ -267,35 +211,23 @@ class vecMPPI(Policy):
         else:
             vpref = v_pref
         pos_stack = pos[:, None]
-        #print("POS STACK SHAPE: ", (vpref * self.model_predictor.prediction_horizon *5))
         goals = pos_stack + (vpref * self.model_predictor.prediction_horizon *5) * np.stack((np.cos(thetas), np.sin(thetas)), axis=0) # (2, N)
-        #print("GOALS SHAPE: ", thetas)
         state = np.array([theta[0], theta_dot[0], vel[0], theta[1], theta_dot[1], vel[1]]) # (6, )
 
         return self.generate_cv_rollout(pos, state, goals, vpref, self.model_predictor.rollout_steps)
 
     def generate_cv_rollout(self, position, state, goals, vpref, length):
         """To get particular rollout"""
-        # rollouts = []
-        # position = np.repeat(position[:, None], goals.shape[1], axis=1)  # (2, N)
-        # for _ in range(length):
-        #     ref_velocities = self.generate_cv_action(position, goals, vpref) # (2, N)
-        #     position, _ = self.step_dynamics(position, ref_velocities)
-        #     rollouts.append( np.concatenate((position, ref_velocities), axis=0).transpose((1, 0)))
-        # rollouts = np.stack(rollouts, axis=1) # N x T x 4
-        # return rollouts
-        multipliers = [0.1, 0.25, 0.5, 1.0]
+
         rollouts = []
         state = np.repeat(state[:, None], goals.shape[1], axis=1)  # (6, N)
         position = np.repeat(position[:, None], goals.shape[1], axis=1)  # (2, N)
-        #for m in multipliers:
+
         for _ in range(length):
             ref_velocities = self.generate_cv_action(position, goals, vpref, multiplier=1.0) # (2, N)
-            #print("REF VELOCITIES: ", ref_velocities)
             state, position, _ = self.step_dynamics(position, state, ref_velocities)
             rollouts.append( np.concatenate((position, ref_velocities), axis=0).transpose((1, 0)))
         rollouts = np.stack(rollouts, axis=1) # N x T x 4
-        #print("ROLLOUTS SHAPE: ", rollouts.shape)
         return rollouts
     
     def generate_cv_action(self, position, goal, vpref, multiplier=1.0):
@@ -304,9 +236,6 @@ class vecMPPI(Policy):
         thetas = np.arctan2(dxdy[1], dxdy[0]) # (N, )
         return np.stack((np.cos(thetas), np.sin(thetas)), axis=0) * vpref # (2, N)
 
-    # def step_dynamics(self, position, action): # (2, N), (2, N)
-    #     position = position +  action * self.model_predictor.dt # (2, N)
-    #     return position, action
     def step_dynamics(self, position, state, action): # (2, N), (6, N), (2, N)
         # Reference input (global)
         N = action.shape[1]
@@ -315,13 +244,11 @@ class vecMPPI(Policy):
         # Integrate with ballbot dynamics
         next_state = self.integrator(state, U) # (6, N)
 
-        #velocity = next_state[[2, 5]] # (2, N)
         velocity = action
         position = position +  velocity * self.model_predictor.dt # (2, N)
         return next_state, position, velocity
 
     def integrator(self, S, U):
-        #print("SHOULD NOT BE IN HERE")
         M = 4
         dt_ = float(self.model_predictor.dt) / M
         S_next = np.array(S)
