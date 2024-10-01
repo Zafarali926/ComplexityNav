@@ -83,6 +83,46 @@ def set_params_passing_fixed(radius, agents, x_width, y_width, discomfort_dist):
             break
     return px, py, gx, gy, 0, 0, 0
 
+def get_goal_sequence(num_goals, g, current_scenario, x_width, y_width):
+    goals = []
+    #goals.append(g)
+    prev_goal = g
+    for i in range(num_goals):
+        #print("I ", i)
+        if current_scenario == 'passing':
+            if prev_goal[0] > 0:
+                gx = (np.random.random() * 0.5) * x_width
+            else:
+                gx = -1 * (np.random.random() * 0.5) * x_width
+            if prev_goal[1] > 0:
+                gy = np.random.random() * y_width * 0.5 * -1
+            else:
+                gy = np.random.random() * y_width * 0.5
+            goals.append((gx, gy))
+            prev_goal = (gx, gy)
+        elif current_scenario == 'crossing':
+            if prev_goal[0] > 0:
+                gx = np.random.random() * x_width * 0.5 * -1
+            else:
+                gx = np.random.random() * x_width * 0.5
+            gy = (np.random.random() - 0.5) * y_width
+            goals.append((gx, gy))
+            prev_goal = (gx, gy)
+        elif current_scenario == 'circle_crossing':
+            gx = -1 * prev_goal[0]
+            gy = -1 * prev_goal[1]
+            goals.append((gx, gy))
+            prev_goal = (gx, gy)
+        elif current_scenario == 'random':
+            gy = (np.random.random() - 0.5) * y_width
+            gx = (np.random.random() - 0.5) * x_width
+            goals.append((gx, gy))
+            prev_goal = (gx, gy)
+
+    #print("LEN GOALS: ", len(goals), current_scenario)
+
+    return goals
+
 def generate_human_state(agents, x_width, y_width, discomfort_dist, policy=None, current_scenario='passing_crossing'):
         params = None
         if current_scenario == 'circle_crossing':
@@ -124,8 +164,10 @@ def generate_human_state(agents, x_width, y_width, discomfort_dist, policy=None,
 
             if sign == 1:
                 params = set_params_passing_fixed(0.3, agents, x_width, y_width, discomfort_dist)
+                current_scenario = 'passing'
             else:
                 params = set_params_crossing_fixed(0.3, agents, x_width, y_width, discomfort_dist)
+                current_scenario = 'crossing'
 
         elif current_scenario == 'random':
             while True:
@@ -156,10 +198,11 @@ def generate_human_state(agents, x_width, y_width, discomfort_dist, policy=None,
             params[3] = params[1] + 1e-2
             params = tuple(params)
 
-        return params
+        return params, current_scenario
 
 def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, current_scenario):
         states = []
+        goals = []
         num_policies = {
             'orca' : num_orca,
             'socialforce' : num_sf,
@@ -168,18 +211,24 @@ def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, 
         }
         for i in range(length):
             states_i = {}
+            goals_i = {}
             agents = [(0, -4, 0, 4, 0, 0, np.pi / 2)]
             for policy in num_policies:
                 for _ in range(num_policies[policy]):
                     if policy in states_i:
-                        params = generate_human_state(agents, x_width, y_width, discomfort_dist, policy=policy, current_scenario=current_scenario)
+                        params, current_scenario_mod = generate_human_state(agents, x_width, y_width, discomfort_dist, policy=policy, current_scenario=current_scenario)
                         states_i[policy].append(params)
+                        goal_list = get_goal_sequence(100, (params[2], params[3]), current_scenario_mod, x_width, y_width)
+                        goals_i[policy].append(goal_list)
                         agents.append(params)
                     else:
-                        states_i[policy] = [generate_human_state(agents, x_width, y_width, discomfort_dist, policy=policy, current_scenario=current_scenario)]
+                        params, current_scenario_mod = generate_human_state(agents, x_width, y_width, discomfort_dist, policy=policy, current_scenario=current_scenario)
+                        states_i[policy] = [params]
+                        goals_i[policy] = [get_goal_sequence(100, (params[2], params[3]), current_scenario_mod, x_width, y_width)]
             states.append(states_i)
+            goals.append(goals_i)
 
-        return states
+        return states, goals
 
 def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not work with randomized radii yet, fixed at 0.3m for now
     if ec.exp.random_seed:
@@ -190,9 +239,11 @@ def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not 
     random.seed(seed)
 
     scenarios = []
+    goals = []
 
     for e in range(len(ec.exp.dx)):
         scenarios_e = []
+        goals_e = []
         for se in range(len(ec.exp.dx[e])):
             # configure environment
             x_width = (ec.exp.dx[e][se][1] - ec.exp.dx[e][se][0]) - (2 * radius + 1e-2)
@@ -203,8 +254,11 @@ def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not 
             num_linear = ec.exp.num_linear[e][se][0]
             test_scenario = ec.exp.scenarios[e][se]
 
-            scenarios_e.append(generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, test_scenario))
+            s, g = generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, test_scenario)
+            scenarios_e.append(s)
+            goals_e.append(g)
         
         scenarios.append(scenarios_e)
+        goals.append(goals_e)
 
-    return scenarios
+    return scenarios, goals

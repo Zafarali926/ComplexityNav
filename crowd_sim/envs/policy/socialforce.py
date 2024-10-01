@@ -11,7 +11,7 @@ class SocialForce(Policy):
         self.trainable = False
         self.multiagent_training = None
         self.kinematics = 'holonomic'
-        self.initial_speed = 1
+        self.initial_speed = 0.5
         self.v0 = 10
         self.sigma = 0.3
         self.sim = None

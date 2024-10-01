@@ -98,6 +98,10 @@ class CV(object):
         dx = actions[:, None, :, None, 0] - predictions[:, :, :, :, 0] #- (state[None, None, None, 1:, 4] + state[0, 4]) # N x S x T' x H
         dy = actions[:, None, :, None, 1] - predictions[:, :, :, :, 1] #- (state[None, None, None, 1:, 4] + state[0, 4]) # N x S x T' x H
 
+        print("STATE SHAPE: ", state.shape)
+        print("ACTIONS SHAPE: ", actions.shape)
+        print("PREDICTIONS SHAPE: ", predictions.shape, predictions[0][0])
+
                                                                                                                                                                                                             # rospy.loginfo(" dx:{} dy:{}".format(dx.shape, dy.shape))
         # Heading of "other agent"
         obs_theta = np.arctan2(predictions[:, :, :, :, 3], predictions[:, :, :, :, 2]) # N x S x T' x H

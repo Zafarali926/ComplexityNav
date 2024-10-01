@@ -53,7 +53,7 @@ def main_experiments(args):
     spec.loader.exec_module(config)
 
     ec = config.ExperimentsConfig(args.debug)
-    scenarios = utils.random_sequence(ec)
+    scenarios, goals = utils.random_sequence(ec)
 
     baseline = None
 
@@ -90,7 +90,7 @@ def main_experiments(args):
             env_config.sim.human_num = args.human_num
         env = gym.make('CrowdSim-v0')
         e = 0
-        se = 0
+        se = 2
 
         env_config.env.dx_range = ec.exp.dx[e][se]
         env_config.env.dy_range = ec.exp.dy[e][se]
@@ -123,7 +123,7 @@ def main_experiments(args):
 
         rewards = []
         time_start = time.time()
-        ob = env.reset(args.phase, scenarios[e][se][0])
+        ob = env.reset(args.phase, scenarios[e][se][1], goals[e][se][1])
         done = False
         last_pos = np.array(robot.get_position())
         while not done:
@@ -242,7 +242,11 @@ def main_experiments(args):
         else:
             env_config = config.EnvConfig(args.debug)
             for e in range(len(ec.exp.dx)):
+                #if e != 0:
+                #    continue
                 for se in range(len(ec.exp.dx[e])):
+                    #if e == 0 and se == 6:
+                    #    continue
                     # configure environment
                     env_config.env.dx_range = ec.exp.dx[e][se]
                     env_config.env.dy_range = ec.exp.dy[e][se]
@@ -263,7 +267,7 @@ def main_experiments(args):
                     robot.time_step = env.time_step
                     robot.set_policy(policy)
                     if scenarios is not None:
-                        explorer = Explorer(env, robot, device, None, gamma=0.9, scenarios=scenarios[e][se])
+                        explorer = Explorer(env, robot, device, None, gamma=0.9, scenarios=scenarios[e][se], goals=goals[e][se])
                     else:
                         explorer = Explorer(env, robot, device, None, gamma=0.9)
 
@@ -286,6 +290,7 @@ def main_experiments(args):
 
                     stats, exp_stats = explorer.run_k_episodes(env.case_size[args.phase], args.phase, print_failure=True, baseline=baseline)
                     exp_stats_list.append(exp_stats)
+                    print(exp_stats_list)
                     if args.plot_test_scenarios_hist:
                         test_angle_seeds = np.array(env.test_scene_seeds)
                         b = [i * 0.01 for i in range(101)]

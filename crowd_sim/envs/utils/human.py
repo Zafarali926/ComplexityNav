@@ -6,6 +6,8 @@ class Human(Agent):
     def __init__(self, config, section, policy=None):
         super().__init__(config, section, policy)
         self.id = None
+        self.goals = []
+        self.current_goal = 0
 
     def act(self, ob):
         """

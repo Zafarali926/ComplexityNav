@@ -207,7 +207,7 @@ class CrowdSim(gym.Env):
             human.v_pref = 1e-4
         return human
 
-    def reset(self, phase='test', scenario=None, test_case=None):
+    def reset(self, phase='test', scenario=None, goals=None, test_case=None):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
@@ -248,10 +248,15 @@ class CrowdSim(gym.Env):
                 human_num = self.human_num
             self.humans = []
             if self.multi_policy:
+                print()
                 if scenario is not None:
+                    #print("RESET TIME")
                     for policy in scenario:
                         for n in range(len(scenario[policy])):
-                            self.humans.append(self.generate_human_from_state(policy, scenario[policy][n]))
+                            human = self.generate_human_from_state(policy, scenario[policy][n])
+                            self.humans.append(human)
+                            human.goals = goals[policy][n]
+                            #print("STATE: ", scenario[policy][n])
                 else:
                     self.set_num_policies()
                     for policy in self.num_policies:
@@ -312,24 +317,46 @@ class CrowdSim(gym.Env):
         return self.step(action, update=False)
     
     def outside_check(self, agent_state, obstacle, action):
-        px = agent_state.px + action.vx * self.time_step
-        py = agent_state.py + action.vy * self.time_step
+        #print("KINEMATICS: ", self.robot.kinematics)
+        if agent_state.kinematics == 'holonomic':
+            px = agent_state.px + action.vx * self.time_step
+            py = agent_state.py + action.vy * self.time_step
 
-        left = px - agent_state.radius < obstacle[0][0]
-        right = px + agent_state.radius > obstacle[1][0]
-        if left or right:
-            vx = 0.0
+            left = px - agent_state.radius < obstacle[0][0]
+            right = px + agent_state.radius > obstacle[1][0]
+            if left or right:
+                vx = 0.0
+            else:
+                vx = action.vx
+
+            below = py - agent_state.radius < obstacle[2][1]
+            above = py + agent_state.radius > obstacle[1][1]
+            if below or above:
+                vy = 0.0
+            else:
+                vy = action.vy
+
+            return ActionXY(vx, vy)
         else:
-            vx = action.vx
+            theta = agent_state.theta + action.r
+            px = agent_state.px + np.cos(theta) * action.v * self.time_step
+            py = agent_state.py + np.sin(theta) * action.v * self.time_step
 
-        below = py - agent_state.radius < obstacle[2][1]
-        above = py + agent_state.radius > obstacle[1][1]
-        if below or above:
-            vy = 0.0
-        else:
-            vy = action.vy
+            left = px - agent_state.radius < obstacle[0][0]
+            right = px + agent_state.radius > obstacle[1][0]
+            if left or right:
+                v = 0.0
+            else:
+                v = action.v
 
-        return ActionXY(vx, vy)
+            below = py - agent_state.radius < obstacle[2][1]
+            above = py + agent_state.radius > obstacle[1][1]
+            if below or above:
+                v = 0.0
+            else:
+                v = action.v
+
+            return ActionRot(v, action.r)
 
     def step(self, action, update=True, baseline=None):
         """
@@ -397,6 +424,7 @@ class CrowdSim(gym.Env):
         # check if reaching the goal
         end_position = np.array(self.robot.compute_position(action, self.time_step))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
+        #print("HOW CLOSE ARE WE: ", norm(end_position - np.array(self.robot.get_goal_position())), self.robot.radius)
         self.min_dist_sum = self.min_dist_sum + self.min_dist_to_human()
         if self.min_dist_overall > self.min_dist_to_human():
             self.min_dist_overall = self.min_dist_to_human()
@@ -410,6 +438,7 @@ class CrowdSim(gym.Env):
             done = True
             info = Collision()
             self.collided = True
+            print("COLLISION AHHHHHHHHHHHHHHHHHHHHHH")
         elif reaching_goal:
             reward = self.success_reward
             done = True
@@ -458,11 +487,23 @@ class CrowdSim(gym.Env):
                 action = self.outside_check(human, self.orca_border, action)
                 human.step(action)
 
-                if self.nonstop_human and human.reached_destination():
-                    if human.v_pref > 1e-2:
-                        agents = [human.get_set_state() for human in self.humans]
-                        agents.append(self.robot.get_set_state())
-                        self.generate_human_from_state(policy=human.policy.name, state=utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, self.current_scenario), human=human)
+                if human.reached_destination():
+                    if self.nonstop_human:
+                        if human.v_pref > 1e-2:
+                            agents = [human.get_set_state() for human in self.humans]
+                            agents.append(self.robot.get_set_state())
+                            #print("PREVIOUS GOAL: ", human.gx, human.gy) 
+                            #self.generate_human_from_state(policy=human.policy.name, state=utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, self.current_scenario, start=(human.px, human.py)), human=human)
+                            #print("HUMAN CURRENT GOAL: ", human.current_goal, len(human.goals), len(human.goals[human.current_goal]))
+                            human.gx = human.goals[human.current_goal][0]
+                            human.gy = human.goals[human.current_goal][1]
+                            human.current_goal = human.current_goal + 1
+                            #print("NEXT GOAL: ", human.gx, human.gy, human.current_goal)
+                    else:
+                        human.v_pref = 1e-2
+                        human.vx = 0.0
+                        human.vy = 0.0
+                        human.policy = policy_factory['linear']()
 
             self.global_time += self.time_step
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans],
@@ -480,6 +521,8 @@ class CrowdSim(gym.Env):
                 ob = [human.get_next_observable_state(action) for human, action in zip(self.humans, human_actions)]
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
+            
+        #print("DONE FIRST STEP")
 
         return ob, reward, done, info
 

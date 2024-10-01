@@ -1,8 +1,3 @@
-"""
-Never Modify this file! Always copy the settings you want to change to your local file.
-"""
-
-
 import numpy as np
 import os
 import yaml
@@ -41,14 +36,14 @@ class BaseExperimentsConfig(object):
     exp.samples = [100, 250, 500, 1000]
     exp.horizon = [3, 4, 5, 6, 7]
 
-    exp.random_seed = False
+    exp.random_seed = True
     
     def __init__(self, debug=False):
         pass
 
 class BaseEnvConfig(object):
     env = Config()
-    env.time_limit = 30
+    env.time_limit = 50
     env.time_step = 0.25
     env.val_size = 500
     env.test_size = 500
@@ -73,7 +68,7 @@ class BaseEnvConfig(object):
     sim.nonstop_human = True
     sim.centralized_planning = True
     sim.multi_policy = True
-    sim.random_seed = False #Should match the setting of exp.random_seed
+    sim.random_seed = True #Should match the setting of exp.random_seed
 
     humans = Config()
     humans.visible = True
@@ -98,12 +93,12 @@ class BaseEnvConfig(object):
 
     MPC = Config()
     MPC.model = 'sgan' #Change to sgan/cv for mpc methods
-    MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan.yaml' #Change to sgan/cv for mpc methods
+    MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan_mppi.yaml' #Change to sgan/cv for mpc methods
     with open(MPC.path, "r") as fin:
         MPC.mpc = yaml.safe_load(fin)
     print("MPC: ", MPC.mpc)
     MPC.mpc['params']['dt'] = 0.25
-    MPC.mpc['params']['prediction_length'] = 1.25
+    MPC.mpc['params']['prediction_length'] = 1.75
     MPC.save_path = "REAL_WORLD"
     MPC.exp_name = "REAL_WORLD"
     MPC.multiagent_training = True
