@@ -139,6 +139,7 @@ class CrowdSim(gym.Env):
         self.circle_radius = config.sim.circle_radius
         self.human_num = config.sim.human_num
         self.random_seed = config.sim.random_seed
+        self.other_goals = config.env.other_goals
 
         self.nonstop_human = config.sim.nonstop_human
         self.centralized_planning = config.sim.centralized_planning
@@ -196,6 +197,7 @@ class CrowdSim(gym.Env):
             if self.multi_policy:
                 if policy == 'static':
                     human = Human(self.config, 'humans', policy=policy_factory['linear']())
+                    human.set(2, 2, 2, 4, 0, 0, np.pi / 2)
                 else:
                     human = Human(self.config, 'humans', policy=policy_factory[policy]())
             else:
@@ -204,6 +206,7 @@ class CrowdSim(gym.Env):
                 human.sample_random_attributes()
         human.set(*state)
         if policy == 'static':
+            human.set(0.5, 3, 2, 4, 0, 0, np.pi / 2)
             human.v_pref = 1e-4
         return human
 
@@ -232,7 +235,7 @@ class CrowdSim(gym.Env):
         self.min_dist_overall = 1e6
         self.robot_velocities = []
 
-        self.robot.set(0, -4, 0, 4, 0, 0, np.pi / 2)
+        self.robot.set(0, -4, 2, 4, 0, 0, np.pi / 2)
         if self.case_counter[phase] >= 0:
             seed = base_seed[phase] + self.case_counter[phase] + 0
             if self.random_seed:
@@ -628,13 +631,17 @@ class CrowdSim(gym.Env):
             display_numbers = False
 
             robot_positions = [state[0].position for state in self.states]
-            goal = mlines.Line2D([self.robot.get_goal_position()[0]], [self.robot.get_goal_position()[1]],
+            goal = mlines.Line2D([self.robot.gx], [self.robot.gy],
                                  color=robot_color, marker='*', linestyle='None',
                                  markersize=15, label='Goal')
+            other_goals = mlines.Line2D([self.other_goals[:,0]], [self.other_goals[:,1]],
+                                color='blue', marker='*', linestyle='None',
+                                markersize=15, label='Goal')
             robot = plt.Circle(robot_positions[0], self.robot.radius, fill=True, color=robot_color)
             # sensor_range = plt.Circle(robot_positions[0], self.robot_sensor_range, fill=False, ls='dashed')
             ax.add_artist(robot)
             ax.add_artist(goal)
+            ax.add_artist(other_goals)
             for i in range(3):
                 ax.plot([self.orca_border[i][0], self.orca_border[i+1][0]], [self.orca_border[i][1], self.orca_border[i+1][1]], color='black')
             ax.plot([self.orca_border[3][0], self.orca_border[0][0]], [self.orca_border[3][1], self.orca_border[0][1]], color='black')
