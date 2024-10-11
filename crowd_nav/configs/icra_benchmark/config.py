@@ -26,7 +26,7 @@ class BaseExperimentsConfig(object):
     exp.sigma = [0.3, 0.6, 0.9]
     exp.q = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
     
-    exp.dx = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-0.75, 0.75], [-5, 5], [-1.25, 1.25], [-1.5, 1.5], [-1.75, 1.75], [-2, 2], [-2.25, 2.25]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
+    exp.dx = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-0.75, 0.75], [-1, 1], [-1.25, 1.25], [-1.5, 1.5], [-1.75, 1.75], [-2, 2], [-2.25, 2.25]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
     exp.dy = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
     
     exp.parameter_sweep = None
@@ -52,7 +52,6 @@ class BaseEnvConfig(object):
     env.robot_sensor_range = 5
     env.dx_range = [-5, 5]
     env.dy_range = [-5, 5]
-    env.other_goals = np.array([[-2,4]])
 
     reward = Config()
     reward.success_reward = 1
@@ -77,10 +76,10 @@ class BaseEnvConfig(object):
     humans.radius = 0.3
     humans.v_pref = 1
     humans.sensor = 'coordinates'
-    humans.num_sf = [0]
+    humans.num_sf = [4]
     humans.num_orca = [4]
-    humans.num_static = [0]
-    humans.num_linear = [0]
+    humans.num_static = [3]
+    humans.num_linear = [4]
     humans.num_sf_orca = None
     humans.num_linear_static = None
 
@@ -92,17 +91,17 @@ class BaseEnvConfig(object):
     robot.sensor = 'coordinates'
     robot.reactive = True
 
-    # MPC = Config()
-    # MPC.model = 'sgan' #Change to sgan/cv for mpc methods
-    # MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan_mppi.yaml' #Change to sgan/cv for mpc methods
-    # with open(MPC.path, "r") as fin:
-    #     MPC.mpc = yaml.safe_load(fin)
-    # print("MPC: ", MPC.mpc)
-    # MPC.mpc['params']['dt'] = 0.25
-    # MPC.mpc['params']['prediction_length'] = 1.75
-    # MPC.save_path = "REAL_WORLD"
-    # MPC.exp_name = "REAL_WORLD"
-    # MPC.multiagent_training = True
+    MPC = Config()
+    MPC.model = 'sgan' #Change to sgan/cv for mpc methods
+    MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan_mppi.yaml' #Change to sgan/cv for mpc methods
+    with open(MPC.path, "r") as fin:
+        MPC.mpc = yaml.safe_load(fin)
+    print("MPC: ", MPC.mpc)
+    MPC.mpc['params']['dt'] = 0.25
+    MPC.mpc['params']['prediction_length'] = 1.75
+    MPC.save_path = "REAL_WORLD"
+    MPC.exp_name = "REAL_WORLD"
+    MPC.multiagent_training = True
 
     def __init__(self, debug=False):
         if debug:
@@ -174,13 +173,6 @@ class BasePolicyConfig(object):
     gnn.wh_dims = [64, gnn.node_dim]
     gnn.edge_dim = 32
     gnn.planning_dims = [150, 100, 100, 1]
-
-    dwa = Config()
-    dwa.acc_max = 0.5
-    dwa.ang_acc_max = 1.04
-    dwa.ang_acc_res_deg = 0.5
-    dwa.max_d = 2.0
-
 
     def __init__(self, debug=False):
         pass

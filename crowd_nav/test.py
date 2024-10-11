@@ -59,7 +59,7 @@ def main_experiments(args):
 
     # configure policy
     policy_config = config.PolicyConfig(args.debug)
-    if args.policy == 'vecmpc' or args.policy == 'vecmppi' or args.policy == 'legible':
+    if args.policy == 'vecmpc' or args.policy == 'vecmppi':
         env_config = config.EnvConfig(args.debug)
         policy = policy_factory[args.policy](env_config)
     elif args.policy == 'orca' or args.policy == 'sfm' or args.policy == 'cv' or args.policy == 'reactive':
@@ -67,7 +67,6 @@ def main_experiments(args):
         baseline = args.policy
     else:
         policy = policy_factory[policy_config.name]()
-        baseline = args.policy
 
     if args.planning_depth is not None:
         policy_config.model_predictive_rl.do_action_clip = True
@@ -90,8 +89,8 @@ def main_experiments(args):
         if args.human_num is not None:
             env_config.sim.human_num = args.human_num
         env = gym.make('CrowdSim-v0')
-        e = 1
-        se = 1
+        e = 0
+        se = 2
 
         env_config.env.dx_range = ec.exp.dx[e][se]
         env_config.env.dy_range = ec.exp.dy[e][se]
@@ -106,8 +105,8 @@ def main_experiments(args):
 
         train_config = config.TrainConfig(args.debug)
         epsilon_end = train_config.train.epsilon_end
-        # if not isinstance(robot.policy, ORCA):
-        #     robot.policy.set_epsilon(epsilon_end)
+        if not isinstance(robot.policy, ORCA):
+            robot.policy.set_epsilon(epsilon_end)
 
         policy.set_phase(args.phase)
         policy.set_device(device)
@@ -307,7 +306,7 @@ def main_experiments(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parse configuration file')
     parser.add_argument('--config', type=str, default=None)
-    parser.add_argument('--policy', type=str, default=None)
+    parser.add_argument('--policy', type=str, default='model_predictive_rl')
     parser.add_argument('-m', '--model_dir', type=str, default=None)
     parser.add_argument('--il', default=False, action='store_true')
     parser.add_argument('--rl', default=False, action='store_true')
@@ -318,7 +317,7 @@ if __name__ == '__main__':
     parser.add_argument('--square', default=False, action='store_true')
     parser.add_argument('--circle', default=False, action='store_true')
     parser.add_argument('--scenario', type=str, default='circle')
-    parser.add_argument('--video_file', type=str, default='legible.mp4')
+    parser.add_argument('--video_file', type=str, default=None)
     parser.add_argument('--video_dir', type=str, default='./')
     parser.add_argument('--results_file', type=str, default='results.json')
     parser.add_argument('--traj', default=False, action='store_true')
