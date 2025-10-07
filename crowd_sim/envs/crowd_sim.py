@@ -20,6 +20,7 @@ import crowd_sim.envs.utils.utils as utils
 from crowd_sim.envs.policy.orca import ORCA
 from crowd_sim.envs.policy.linear import Linear
 from crowd_sim.envs.policy.socialforce import SocialForce
+from crowd_sim.envs.grouping.grouping_functions import *
 
 
 class CrowdSim(gym.Env):
@@ -80,11 +81,11 @@ class CrowdSim(gym.Env):
 
         self.phase = None
 
-        # for grouping
-        # self.group_colors = ['black']
-        # self.group_labels = [0]
-        # self.grouper = Grouper()
-        # self.shaper = GroupSpaceGenerator()
+        #for grouping
+        self.group_colors = ['black']
+        self.group_labels = [0]
+        self.grouper = Grouper()
+        self.shaper = GroupSpaceGenerator()
 
     def sample_uniform(self, range):
         return random.randint(range[0], range[1])
@@ -829,10 +830,10 @@ class CrowdSim(gym.Env):
             # anim2 = animation.FuncAnimation(fig2, update_chull, frames=len(self.states), interval=self.time_step * 1000)
 
             # Polygon space generation
-            update_complete_polygon(0)
-            anim2 = animation.FuncAnimation(fig2, update_complete_polygon, frames=len(self.states), interval=self.time_step * 1000)
+            #update_complete_polygon(0)
+            #anim2 = animation.FuncAnimation(fig2, update_complete_polygon, frames=len(self.states), interval=self.time_step * 1000)
 
-            anim2.running = True
+            #anim2.running = True
 
             ##################################
             ## end group space generation ##
