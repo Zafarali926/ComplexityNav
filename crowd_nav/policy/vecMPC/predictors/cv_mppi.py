@@ -102,6 +102,10 @@ class CV_MPPI(object):
         pos_after_action = state[:,:2] + self.vpref * self.dt * actions
         dx = pos_after_action[:, None, None, None, 0] - predictions[:,:,t,:,0]
         dy = pos_after_action[:, None, None, None, 1] - predictions[:,:,t,:,1]
+
+        print("STATE SHAPE: ", state.shape)
+        print("ACTIONS SHAPE: ", actions.shape)
+        print("PREDICTIONS SHAPE: ", predictions.shape, predictions[:, :, t, :, 0].shape)
                                                                                                                                                                                                             # rospy.loginfo(" dx:{} dy:{}".format(dx.shape, dy.shape))
         # Heading of "other agent"
         obs_theta = torch.arctan2(predictions[:, :, t, :, 3], predictions[:, :, t, :, 2]) # N x S x T' x H
@@ -114,9 +118,12 @@ class CV_MPPI(object):
 
         # Sigma values used to create 2D gaussian around obstacles for cost penalty
         sigma = torch.where(alpha, self.sigma_r, self.sigma_h)
+        print("STATIC OBS SIZE: ", static_obs.shape, " SIGMA SHAPE: ", sigma.shape)
         sigma = static_obs + torch.multiply(~static_obs, sigma) # N x S x T' x H
         sigma_s = 1.0 * static_obs + self.sigma_s * (~static_obs) # N x S x T' x H
                                                                                                                                                                                                             # rospy.loginfo("s:{} ss:{}".format(sigma.shape, sigma_s.shape))
+
+        print("OBSTHETA: ", obs_theta.shape, " SIGMA_S: ", sigma_s.shape, sigma.shape, dx.shape, dy.shape, self.Q_obs)
 
         # Variables used in cost_obs function based on sigma and obs_theta
         a = torch.cos(obs_theta) ** 2 / (2 * sigma ** 2) + torch.sin(obs_theta) ** 2 / (2 * sigma_s ** 2)
@@ -124,9 +131,11 @@ class CV_MPPI(object):
         c = torch.sin(obs_theta) ** 2 / (2 * sigma ** 2) + torch.cos(obs_theta) ** 2 / (2 * sigma_s ** 2)
 
         cost = torch.exp(-((a * dx ** 2) + (2 * b * dx * dy) +  (c * dy ** 2))) # N x S x T' x H
+        print("COST: ", cost.shape)
         cost = torch.mean(cost, axis=3)
         cost = torch.sum(cost, axis=-1)
         cost = -1 * cost
+        print("COSTTTT: ", cost.shape)
         #cost = norm_min_sum
                                                                                                                                                                                                             # rospy.loginfo("c: {}\n\n".format(cost.shape))
         return self.Q_obs * (cost ** 2) # (N, S)

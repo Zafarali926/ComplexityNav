@@ -20,7 +20,6 @@ import crowd_sim.envs.utils.utils as utils
 from crowd_sim.envs.policy.orca import ORCA
 from crowd_sim.envs.policy.linear import Linear
 from crowd_sim.envs.policy.socialforce import SocialForce
-from crowd_sim.envs.grouping.grouping_functions import *
 
 
 class CrowdSim(gym.Env):
@@ -214,26 +213,6 @@ class CrowdSim(gym.Env):
         if policy == 'static':
             human.v_pref = 1e-4
         return human
-    
-    def generate_human(self, policy='static', human=None):
-        if human is None:
-            if self.multi_policy:
-                if policy == 'static':
-                    human = Human(self.config, 'humans', policy=policy_factory['linear']())
-                else:
-                    human = Human(self.config, 'humans', policy=policy_factory[policy]())
-            else:
-                human = Human(self.config, 'humans')
-            if self.randomize_attributes:
-                human.sample_random_attributes()
-
-        params, current_scenario = utils.generate_human_state(agents=[], x_width=self.x_width,y_width=self.y_width,discomfort_dist=self.discomfort_dist)
-        px, py, gx, gy, vx, vy, theta = params
-        # print(utils.generate_human_state(agents=[], x_width=self.x_width,y_width=self.y_width,discomfort_dist=self.discomfort_dist))
-        human.set(px, py, gx, gy, vx, vy, theta)
-        if policy == 'static':
-            human.v_pref = 1e-4
-        return human
 
     def reset(self, phase='test', scenario=None, goals=None, test_case=None):
         """
@@ -288,26 +267,11 @@ class CrowdSim(gym.Env):
                 else:
                     self.set_num_policies()
                     for policy in self.num_policies:
-                        agents = [human.get_set_state() for human in self.humans]
-                        agents.append(self.robot.get_set_state())
                         for _ in range(self.num_policies[policy]):
-                            # self.humans.append(self.generate_human_from_state(policy=policy, state=utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, self.current_scenario)))
-
-                            # self.humans.append(self.generate_human(human=None, policy=policy))
                             self.humans.append(self.generate_human(human=None, policy=policy))
-                            # human.goals = goals[policy][n]
-
             else:
                 for _ in range(human_num):
-                    # self.humans.append(self.generate_human()) #bitch
                     self.humans.append(self.generate_human())
-                    # human.goals = goals[policy][n]
-
-                    # agents = [human.get_set_state() for human in self.humans]
-                    # agents.append(self.robot.get_set_state())
-                    # px, py, gx, gy, i, d, k, scenario = utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, start=(0.0,0.0))
-                    # state = utils.
-                    # self.humans.append(self.generate_human_from_state(policy='static', state=))
 
             # case_counter is always between 0 and case_size[phase]
             self.case_counter[phase] = (self.case_counter[phase] + 1) % self.case_size[phase]
@@ -481,7 +445,6 @@ class CrowdSim(gym.Env):
             done = True
             info = Collision()
             self.collided = True
-            print("COLLISION AHHHHHHHHHHHHHHHHHHHHHH")
         elif reaching_goal:
             reward = self.success_reward
             done = True
@@ -537,14 +500,9 @@ class CrowdSim(gym.Env):
                             agents.append(self.robot.get_set_state())
                             #print("PREVIOUS GOAL: ", human.gx, human.gy) 
                             #self.generate_human_from_state(policy=human.policy.name, state=utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, self.current_scenario, start=(human.px, human.py)), human=human)
-                            print("HUMAN CURRENT GOAL: ", human.current_goal, len(human.goals))#, len(human.goals[human.current_goal]))
-                            if (len(human.goals) > human.current_goal):
-                                human.gx = human.goals[human.current_goal][0]
-                                human.gy = human.goals[human.current_goal][1]
-                            else:
-                                human.gx = 0
-                                human.gy = 0
-                            
+                            #print("HUMAN CURRENT GOAL: ", human.current_goal, len(human.goals), len(human.goals[human.current_goal]))
+                            human.gx = human.goals[human.current_goal][0]
+                            human.gy = human.goals[human.current_goal][1]
                             human.current_goal = human.current_goal + 1
                             #print("NEXT GOAL: ", human.gx, human.gy, human.current_goal)
                     else:
@@ -703,8 +661,6 @@ class CrowdSim(gym.Env):
                     human_colors.append('#998ec3')
 
             human_positions = [[state[1][j].position for j in range(len(self.humans))] for state in self.states]
-            human_velocities = [[self.states[i][1][j].velocity for j in range(len(self.humans))]
-                               for i in range(len(self.states))]
             humans = [plt.Circle(human_positions[0][i], self.humans[i].radius)
                       for i in range(len(self.humans))]
             humans_patch = PatchCollection(humans, cmap=plt.cm.tab10, alpha=1.0)
@@ -729,60 +685,24 @@ class CrowdSim(gym.Env):
 
                 robot.center = robot_positions[frame_num]
 
-
                 patches = []
                 for i in range(len(human_positions[frame_num])):
                     circle = plt.Circle(human_positions[frame_num][i], self.humans[i].radius)
                     patches.append(circle)
 
                 humans_patch.set_paths(patches)
-                for i in range(len(humans)):
+                colors_list = []
+                for i in range(len(human_colors)):
+                    colors_list.append(colors.to_rgb(human_colors[i]))
                     if np.sqrt((robot.center[0] - human_positions[frame_num][i][0])**2 + (robot.center[1] - human_positions[frame_num][i][1])**2) < 0.6:
+                        colors_list[i] = colors.to_rgb('#ff0000')
                         if not collide:
                             frames = frame_num
                             collide = True
-                humans_patch.set_facecolor(np.array(group_colors[1:]))
+                color_arr = np.array(colors_list)
+                humans_patch.set_facecolor(color_arr)
 
-            def plot_value_heatmap():
-                assert self.robot.kinematics == 'holonomic'
-                for agent in [self.states[global_step][0]] + self.states[global_step][1]:
-                    print(('{:.4f}, ' * 6 + '{:.4f}').format(agent.px, agent.py, agent.gx, agent.gy,
-                                                             agent.vx, agent.vy, agent.theta))
-                # when any key is pressed draw the action value plot
-                fig, axis = plt.subplots()
-                speeds = [0] + self.robot.policy.speeds
-                rotations = self.robot.policy.rotations + [np.pi * 2]
-                r, th = np.meshgrid(speeds, rotations)
-                z = np.array(self.action_values[global_step % len(self.states)][1:])
-                z = (z - np.min(z)) / (np.max(z) - np.min(z))
-                z = np.reshape(z, (16, 5))
-                polar = plt.subplot(projection="polar")
-                polar.tick_params(labelsize=16)
-                mesh = plt.pcolormesh(th, r, z, vmin=0, vmax=1)
-                plt.plot(rotations, r, color='k', ls='none')
-                plt.grid()
-                cbaxes = fig.add_axes([0.85, 0.1, 0.03, 0.8])
-                cbar = plt.colorbar(mesh, cax=cbaxes)
-                cbar.ax.tick_params(labelsize=16)
-                plt.show()
-
-            def on_click(event):
-                anim.running ^= True
-                # anim2.running ^= True
-                if anim.running:
-                    anim.event_source.stop()
-                    # anim2.event_source.stop()
-                    if hasattr(self.robot.policy, 'action_values'):
-                        plot_value_heatmap()
-                else:
-                    anim.event_source.start()
-                    # anim2.event_source.start()
-
-            fig.canvas.mpl_connect('key_press_event', on_click)
-            # logging.info("am I here")
-            
-            anim = animation.FuncAnimation(fig, update, frames=len(self.states), interval=self.time_step * 1000)
-            anim.running = True
+            anim = animation.FuncAnimation(fig, update, frames=frames, interval=self.time_step * 500, blit=False)
 
 
             ##################################

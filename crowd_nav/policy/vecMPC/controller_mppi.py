@@ -5,7 +5,7 @@ import numpy as np
 
 from crowd_sim.envs.policy.policy import Policy
 from crowd_nav.policy.vecMPC.logger import BaseLogger
-from crowd_sim.envs.utils.action import ActionXY
+from crowd_sim.envs.utils.action import ActionXY, ActionRot
 
 from .predictors import *
 from .predictors.sgan_mppi import SGAN_MPPI
@@ -53,9 +53,11 @@ class vecMPPI(Policy):
         self.name = 'vecmppi'
         self.u_prev = None
 
+        self.multiagent_training = config.MPC.multiagent_training
+
         self.mppi_settings = {
             'noise': 2.0,
-            'samples': 250,
+            'samples': 100,
             'horizon': 6
         }
 
@@ -68,36 +70,75 @@ class vecMPPI(Policy):
         self.model_predictor.prediction_horizon = horizon * self.model_predictor.dt
 
     def dynamics(self, state, action, t=None):
+        print("STATE SHAPE: ", state.shape)
+        s = state[:,:2] + action * self.model_predictor.dt
+        print("RETURN SHAPE: ", s.shape)
         return state[:,:2] + action * self.model_predictor.dt
+    
+    def normalize_angle(self, theta):
+        """Normalize an angle or batch of angles to [-pi, pi]"""
+        return torch.atan2(torch.sin(theta), torch.cos(theta))
+    
+    def dd_dynamics(self, s, a, t=None):
+        print("DD !", s.shape)
+        dt = self.model_predictor.dt  # length of transition duration in seconds
+
+        s2_ego = torch.zeros((s.size()[0], 3))
+        d_theta = a[:, 1] * dt
+        turning_radius = a[:, 0] / a[:, 1]
+
+        s2_ego[:, 0] = torch.where(
+            a[:, 1] == 0, a[:, 0] * dt, turning_radius * torch.sin(d_theta)
+        )
+        s2_ego[:, 1] = torch.where(
+            a[:, 1] == 0, 0.0, turning_radius * (1.0 - torch.cos(d_theta))
+        )
+        s2_ego[:, 2] = torch.where(a[:, 1] == 0, 0.0, d_theta)
+
+        s2_global = torch.zeros_like(s)
+        s2_global[:, 0] = (
+            s[:, 0] + s2_ego[:, 0] * torch.cos(s[:, 2]) - s2_ego[:, 1] * torch.sin(s[:, 2])
+        )
+        s2_global[:, 1] = (
+            s[:, 1] + s2_ego[:, 0] * torch.sin(s[:, 2]) + s2_ego[:, 1] * torch.cos(s[:, 2])
+        )
+        s2_global[:, 2] = self.normalize_angle(s[:, 2] + s2_ego[:, 2])
+
+        return s2_global
     
     def cost(self, state, action, t):
         cost_goal = self.model_predictor.goal_cost(state, action, self.goal)
         cost_obstacle = self.model_predictor.obstacle_cost(state, action, self.predictions, t).squeeze()
         cost = cost_goal + cost_obstacle
+        print("C SIZE: ", cost.shape)
         return cost
     
     def create_mppi(self):
         if self.u_prev is not None:
-            ctrl = mppi.MPPI(self.dynamics, running_cost=self.cost, nx=5, noise_sigma= self.mppi_settings['noise'] * torch.eye(2), num_samples=self.mppi_settings['samples'], horizon=self.mppi_settings['horizon'],
+            # ctrl = mppi.MPPI(self.dd_dynamics, running_cost=self.cost, nx=5, noise_sigma= self.mppi_settings['noise'] * torch.eye(2), num_samples=self.mppi_settings['samples'], horizon=self.mppi_settings['horizon'],
+            #         lambda_=1, device=self.device,
+            #         u_min=torch.tensor([-1 * self.model_predictor.vpref, -1 * self.model_predictor.vpref], dtype=torch.double, device=self.device),
+            #         u_max=torch.tensor([self.model_predictor.vpref, self.model_predictor.vpref], dtype=torch.double, device=self.device),
+            #         U_init=self.u_prev,
+            #         step_dependent_dynamics=True)
+            ctrl = mppi.MPPI(self.dd_dynamics, running_cost=self.cost, nx=5, noise_sigma= self.mppi_settings['noise'] * torch.eye(2), num_samples=self.mppi_settings['samples'], horizon=self.mppi_settings['horizon'],
                     lambda_=1, device=self.device,
-                    u_min=torch.tensor([-1 * self.model_predictor.vpref, -1 * self.model_predictor.vpref], dtype=torch.double, device=self.device),
-                    u_max=torch.tensor([self.model_predictor.vpref, self.model_predictor.vpref], dtype=torch.double, device=self.device),
+                    u_min=torch.tensor([-1 * 0.3, -1], dtype=torch.double, device=self.device),
+                    u_max=torch.tensor([0.3, 0.3], dtype=torch.double, device=self.device),
                     U_init=self.u_prev,
                     step_dependent_dynamics=True)
         else:
-            ctrl = mppi.MPPI(self.dynamics, running_cost=self.cost, nx=5, noise_sigma= self.mppi_settings['noise'] * torch.eye(2), num_samples=self.mppi_settings['samples'], horizon=self.mppi_settings['horizon'],
+            # ctrl = mppi.MPPI(self.dd_dynamics, running_cost=self.cost, nx=5, noise_sigma= self.mppi_settings['noise'] * torch.eye(2), num_samples=self.mppi_settings['samples'], horizon=self.mppi_settings['horizon'],
+            #         lambda_=1, device=self.device,
+            #         u_min=torch.tensor([-1 * self.model_predictor.vpref, -1 * self.model_predictor.vpref], dtype=torch.double, device=self.device),
+            #         u_max=torch.tensor([self.model_predictor.vpref, self.model_predictor.vpref], dtype=torch.double, device=self.device),
+            #         step_dependent_dynamics=True)
+            ctrl = mppi.MPPI(self.dd_dynamics, running_cost=self.cost, nx=5, noise_sigma= self.mppi_settings['noise'] * torch.eye(2), num_samples=self.mppi_settings['samples'], horizon=self.mppi_settings['horizon'],
                     lambda_=1, device=self.device,
-                    u_min=torch.tensor([-1 * self.model_predictor.vpref, -1 * self.model_predictor.vpref], dtype=torch.double, device=self.device),
-                    u_max=torch.tensor([self.model_predictor.vpref, self.model_predictor.vpref], dtype=torch.double, device=self.device),
+                    u_min=torch.tensor([-1 * 0.3, -1 * 0.3], dtype=torch.double, device=self.device),
+                    u_max=torch.tensor([0.3, 0.3], dtype=torch.double, device=self.device),
                     step_dependent_dynamics=True)
         return ctrl
-    
-    def create_nominal_trajectory(self, start=torch.Tensor((0,-4)), goal=torch.Tensor((0, 4)), horizon=5):
-        direction = (goal - start) / torch.norm(goal - start)
-        traj = torch.zeros((horizon, 2))
-        for i in range(horizon):
-            traj[i] = torch.Tensor(start) + 0.25 * direction
-        return traj
     
     def update_predictions(self):
         self.predictions = self.model_predictor.get_predictions(self.trajectory)
@@ -134,6 +175,7 @@ class vecMPPI(Policy):
     def predict(self, state, border=None, radius=None, baseline=None):
         start_t = time()
         self.pathbot_state = state.robot_state
+        print("PATHBOT STATE: ", self.pathbot_state.theta)
         self.ego_state = state.robot_state
 
         # Initialize sim heading for MPC if first iteration
@@ -158,28 +200,19 @@ class vecMPPI(Policy):
         ctrl = self.create_mppi()
         
         mppi_action = None
-        start_refine = time()
         if self.u_prev == None:
             for i in range(5):
-                mppi_action = ctrl.command(self.flatten_state(self.pathbot_state))
+                mppi_action = ctrl.command(np.array([self.pathbot_state.px, self.pathbot_state.py, self.pathbot_state.theta]))
         else:
-            mppi_action = ctrl.command(self.flatten_state(self.pathbot_state))
+            mppi_action = ctrl.command(np.array([self.pathbot_state.px, self.pathbot_state.py, self.pathbot_state.theta]))
             self.u_prev = mppi_action
 
-        return self.action_post_processing(mppi_action, start_t)
-    
-    def outside_check(self, position, radius, obstacle):
-        left = position[0] - radius < obstacle[0][0]
-        right = position[0] + radius > obstacle[1][0]
-        below = position[1] - radius < obstacle[2][1]
-        above = position[1] + radius > obstacle[1][1]
-
-        if ((left or right) or (above or below)):
-            return True
-
-        return False
+        return self.action_post_processing(mppi_action, start_t, rot=True)
         
-    def action_post_processing(self, action, start_t):
+    def action_post_processing(self, action, start_t, rot=True):
+        if rot:
+            print("ROTTTTTTTTTTTTTTTTTTTTTTT")
+            return ActionRot(action[0], action[1])
         global_action_xy = ActionXY(action[0], action[1])
         # Keep in global frame ActionXY
         action_xy = global_action_xy
@@ -193,90 +226,3 @@ class vecMPPI(Policy):
                 #self.sim_heading = np.random.rand() * 2 * np.pi
         self.logger.add_time(time()-start_t)
         return action_xy
-
-    def generate_action_set(self, state, trajectory, goal, v_pref=None):
-        """To get actions"""
-
-        pos = np.array([state.px, state.py])
-        vel = [state.vx, state.vy]
-        theta = [0.0, 0.0]
-        theta_dot = [0.0, 0.0]
-
-        #sim_heading = state.get_sim_heading()
-        sim_heading = 0.0
-        thetas = [sim_heading-(self.span / 2.0) + i * self.span / (self.n_actions - 1) for i in range(self.n_actions)]
-        thetas = thetas if len(thetas) > 1 else np.arctan2(goal-pos)
-        if v_pref is None:
-            vpref = self.pathbot_state.v_pref
-        else:
-            vpref = v_pref
-        pos_stack = pos[:, None]
-        goals = pos_stack + (vpref * self.model_predictor.prediction_horizon *5) * np.stack((np.cos(thetas), np.sin(thetas)), axis=0) # (2, N)
-        state = np.array([theta[0], theta_dot[0], vel[0], theta[1], theta_dot[1], vel[1]]) # (6, )
-
-        return self.generate_cv_rollout(pos, state, goals, vpref, self.model_predictor.rollout_steps)
-
-    def generate_cv_rollout(self, position, state, goals, vpref, length):
-        """To get particular rollout"""
-
-        rollouts = []
-        state = np.repeat(state[:, None], goals.shape[1], axis=1)  # (6, N)
-        position = np.repeat(position[:, None], goals.shape[1], axis=1)  # (2, N)
-
-        for _ in range(length):
-            ref_velocities = self.generate_cv_action(position, goals, vpref, multiplier=1.0) # (2, N)
-            state, position, _ = self.step_dynamics(position, state, ref_velocities)
-            rollouts.append( np.concatenate((position, ref_velocities), axis=0).transpose((1, 0)))
-        rollouts = np.stack(rollouts, axis=1) # N x T x 4
-        return rollouts
-    
-    def generate_cv_action(self, position, goal, vpref, multiplier=1.0):
-        """To get particular action"""
-        dxdy = goal-position # (2, N)
-        thetas = np.arctan2(dxdy[1], dxdy[0]) # (N, )
-        return np.stack((np.cos(thetas), np.sin(thetas)), axis=0) * vpref # (2, N)
-
-    def step_dynamics(self, position, state, action): # (2, N), (6, N), (2, N)
-        # Reference input (global)
-        N = action.shape[1]
-        U = np.concatenate((np.zeros((2, N)), action[0, None], np.zeros((2, N)), action[1, None]), axis=0) # (6, N)
-
-        # Integrate with ballbot dynamics
-        next_state = self.integrator(state, U) # (6, N)
-
-        velocity = action
-        position = position +  velocity * self.model_predictor.dt # (2, N)
-        return next_state, position, velocity
-
-    def integrator(self, S, U):
-        M = 4
-        dt_ = float(self.model_predictor.dt) / M
-        S_next = np.array(S)
-        for i in range(M):
-            k1 = dt_ * self.state_dot(S, U)
-            k2 = dt_ * self.state_dot(S + (0.5 * k1), U)
-            k3 = dt_ * self.state_dot(S + (0.5 * k2), U)
-            k4 = dt_ * self.state_dot(S + k3, U)
-            S_next += (k1 + 2 * k2 + 2 * k3 + k4) / 6
-        return S_next
-
-    @staticmethod
-    def state_dot(S0, U):
-        S_dot = np.array(S0)
-        S_dot[0] = S0[1]
-        S_dot[1] = ((-38.73 * S0[0]) + (-11.84 * S0[1]) + (-6.28 * S0[2]) +
-                    (51.61 * U[0]) + (11.84 * U[1]) + (6.28 * U[2]))
-
-        S_dot[2] = ((13.92 * S0[0]) + (2.0 * S0[1]) + (1.06 * S0[2]) +
-                    (-8.72 * U[0]) + (-2.0 * U[1]) + (-1.06 * U[2]))
-
-        S_dot[3] = S0[4]
-        S_dot[4] = ((-38.54 * S0[3]) + (-11.82 * S0[4]) + (-6.24 * S0[5]) +
-                    (51.36 * U[3]) + (11.82 * U[4]) + (6.24 * U[5]))
-
-        S_dot[5] = ((14.00 * S0[3]) + (2.03 * S0[4]) + (1.07 * S0[5]) +
-                    (-8.81 * U[3]) + (-2.03 * U[4]) + (-1.07 * U[5]))
-        return S_dot
-    
-    def get_control_type(self):
-        return self.__str__() + "_" + self.model_predictor.__str__()
