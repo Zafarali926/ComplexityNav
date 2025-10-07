@@ -1,3 +1,4 @@
+# THE GROUP ONE
 import logging
 import random
 import math
@@ -11,7 +12,7 @@ import numpy as np
 from numpy.linalg import norm
 
 from crowd_sim.envs.policy.policy_factory import policy_factory
-from crowd_sim.envs.utils.state import tensor_to_joint_state, JointState
+from crowd_sim.envs.utils.state import FullState, tensor_to_joint_state, JointState
 from crowd_sim.envs.utils.action import ActionRot, ActionXY
 from crowd_sim.envs.utils.human import Human
 from crowd_sim.envs.utils.info import *
@@ -19,6 +20,7 @@ import crowd_sim.envs.utils.utils as utils
 from crowd_sim.envs.policy.orca import ORCA
 from crowd_sim.envs.policy.linear import Linear
 from crowd_sim.envs.policy.socialforce import SocialForce
+from crowd_sim.envs.grouping.grouping_functions import *
 
 
 class CrowdSim(gym.Env):
@@ -78,6 +80,12 @@ class CrowdSim(gym.Env):
         self.human_goals = []
 
         self.phase = None
+
+        # for grouping
+        self.group_colors = ['black']
+        self.group_labels = [0]
+        self.grouper = Grouper()
+        self.shaper = GroupSpaceGenerator()
 
     def sample_uniform(self, range):
         return random.randint(range[0], range[1])
@@ -206,8 +214,28 @@ class CrowdSim(gym.Env):
         if policy == 'static':
             human.v_pref = 1e-4
         return human
+    
+    def generate_human(self, policy='static', human=None):
+        if human is None:
+            if self.multi_policy:
+                if policy == 'static':
+                    human = Human(self.config, 'humans', policy=policy_factory['linear']())
+                else:
+                    human = Human(self.config, 'humans', policy=policy_factory[policy]())
+            else:
+                human = Human(self.config, 'humans')
+            if self.randomize_attributes:
+                human.sample_random_attributes()
 
-    def reset(self, phase='test', scenario=None, test_case=None):
+        params, current_scenario = utils.generate_human_state(agents=[], x_width=self.x_width,y_width=self.y_width,discomfort_dist=self.discomfort_dist)
+        px, py, gx, gy, vx, vy, theta = params
+        # print(utils.generate_human_state(agents=[], x_width=self.x_width,y_width=self.y_width,discomfort_dist=self.discomfort_dist))
+        human.set(px, py, gx, gy, vx, vy, theta)
+        if policy == 'static':
+            human.v_pref = 1e-4
+        return human
+
+    def reset(self, phase='test', scenario=None, goals=None, test_case=None):
         """
         Set px, py, gx, gy, vx, vy, theta for robot and humans
         :return:
@@ -248,18 +276,38 @@ class CrowdSim(gym.Env):
                 human_num = self.human_num
             self.humans = []
             if self.multi_policy:
+                print()
                 if scenario is not None:
+                    #print("RESET TIME")
                     for policy in scenario:
                         for n in range(len(scenario[policy])):
-                            self.humans.append(self.generate_human_from_state(policy, scenario[policy][n]))
+                            human = self.generate_human_from_state(policy, scenario[policy][n])
+                            self.humans.append(human)
+                            human.goals = goals[policy][n]
+                            #print("STATE: ", scenario[policy][n])
                 else:
                     self.set_num_policies()
                     for policy in self.num_policies:
+                        agents = [human.get_set_state() for human in self.humans]
+                        agents.append(self.robot.get_set_state())
                         for _ in range(self.num_policies[policy]):
+                            # self.humans.append(self.generate_human_from_state(policy=policy, state=utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, self.current_scenario)))
+
+                            # self.humans.append(self.generate_human(human=None, policy=policy))
                             self.humans.append(self.generate_human(human=None, policy=policy))
+                            # human.goals = goals[policy][n]
+
             else:
                 for _ in range(human_num):
+                    # self.humans.append(self.generate_human()) #bitch
                     self.humans.append(self.generate_human())
+                    # human.goals = goals[policy][n]
+
+                    # agents = [human.get_set_state() for human in self.humans]
+                    # agents.append(self.robot.get_set_state())
+                    # px, py, gx, gy, i, d, k, scenario = utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, start=(0.0,0.0))
+                    # state = utils.
+                    # self.humans.append(self.generate_human_from_state(policy='static', state=))
 
             # case_counter is always between 0 and case_size[phase]
             self.case_counter[phase] = (self.case_counter[phase] + 1) % self.case_size[phase]
@@ -312,24 +360,46 @@ class CrowdSim(gym.Env):
         return self.step(action, update=False)
     
     def outside_check(self, agent_state, obstacle, action):
-        px = agent_state.px + action.vx * self.time_step
-        py = agent_state.py + action.vy * self.time_step
+        #print("KINEMATICS: ", self.robot.kinematics)
+        if agent_state.kinematics == 'holonomic':
+            px = agent_state.px + action.vx * self.time_step
+            py = agent_state.py + action.vy * self.time_step
 
-        left = px - agent_state.radius < obstacle[0][0]
-        right = px + agent_state.radius > obstacle[1][0]
-        if left or right:
-            vx = 0.0
+            left = px - agent_state.radius < obstacle[0][0]
+            right = px + agent_state.radius > obstacle[1][0]
+            if left or right:
+                vx = 0.0
+            else:
+                vx = action.vx
+
+            below = py - agent_state.radius < obstacle[2][1]
+            above = py + agent_state.radius > obstacle[1][1]
+            if below or above:
+                vy = 0.0
+            else:
+                vy = action.vy
+
+            return ActionXY(vx, vy)
         else:
-            vx = action.vx
+            theta = agent_state.theta + action.r
+            px = agent_state.px + np.cos(theta) * action.v * self.time_step
+            py = agent_state.py + np.sin(theta) * action.v * self.time_step
 
-        below = py - agent_state.radius < obstacle[2][1]
-        above = py + agent_state.radius > obstacle[1][1]
-        if below or above:
-            vy = 0.0
-        else:
-            vy = action.vy
+            left = px - agent_state.radius < obstacle[0][0]
+            right = px + agent_state.radius > obstacle[1][0]
+            if left or right:
+                v = 0.0
+            else:
+                v = action.v
 
-        return ActionXY(vx, vy)
+            below = py - agent_state.radius < obstacle[2][1]
+            above = py + agent_state.radius > obstacle[1][1]
+            if below or above:
+                v = 0.0
+            else:
+                v = action.v
+
+            return ActionRot(v, action.r)
 
     def step(self, action, update=True, baseline=None):
         """
@@ -397,6 +467,7 @@ class CrowdSim(gym.Env):
         # check if reaching the goal
         end_position = np.array(self.robot.compute_position(action, self.time_step))
         reaching_goal = norm(end_position - np.array(self.robot.get_goal_position())) < self.robot.radius
+        #print("HOW CLOSE ARE WE: ", norm(end_position - np.array(self.robot.get_goal_position())), self.robot.radius)
         self.min_dist_sum = self.min_dist_sum + self.min_dist_to_human()
         if self.min_dist_overall > self.min_dist_to_human():
             self.min_dist_overall = self.min_dist_to_human()
@@ -410,6 +481,7 @@ class CrowdSim(gym.Env):
             done = True
             info = Collision()
             self.collided = True
+            print("COLLISION AHHHHHHHHHHHHHHHHHHHHHH")
         elif reaching_goal:
             reward = self.success_reward
             done = True
@@ -458,11 +530,28 @@ class CrowdSim(gym.Env):
                 action = self.outside_check(human, self.orca_border, action)
                 human.step(action)
 
-                if self.nonstop_human and human.reached_destination():
-                    if human.v_pref > 1e-2:
-                        agents = [human.get_set_state() for human in self.humans]
-                        agents.append(self.robot.get_set_state())
-                        self.generate_human_from_state(policy=human.policy.name, state=utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, self.current_scenario), human=human)
+                if human.reached_destination():
+                    if self.nonstop_human:
+                        if human.v_pref > 1e-2:
+                            agents = [human.get_set_state() for human in self.humans]
+                            agents.append(self.robot.get_set_state())
+                            #print("PREVIOUS GOAL: ", human.gx, human.gy) 
+                            #self.generate_human_from_state(policy=human.policy.name, state=utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, self.current_scenario, start=(human.px, human.py)), human=human)
+                            print("HUMAN CURRENT GOAL: ", human.current_goal, len(human.goals))#, len(human.goals[human.current_goal]))
+                            if (len(human.goals) > human.current_goal):
+                                human.gx = human.goals[human.current_goal][0]
+                                human.gy = human.goals[human.current_goal][1]
+                            else:
+                                human.gx = 0
+                                human.gy = 0
+                            
+                            human.current_goal = human.current_goal + 1
+                            #print("NEXT GOAL: ", human.gx, human.gy, human.current_goal)
+                    else:
+                        human.v_pref = 1e-2
+                        human.vx = 0.0
+                        human.vy = 0.0
+                        human.policy = policy_factory['linear']()
 
             self.global_time += self.time_step
             self.states.append([self.robot.get_full_state(), [human.get_full_state() for human in self.humans],
@@ -480,6 +569,8 @@ class CrowdSim(gym.Env):
                 ob = [human.get_next_observable_state(action) for human, action in zip(self.humans, human_actions)]
             elif self.robot.sensor == 'RGB':
                 raise NotImplementedError
+            
+        #print("DONE FIRST STEP")
 
         return ob, reward, done, info
 
@@ -493,7 +584,7 @@ class CrowdSim(gym.Env):
             if self.robot.visible:
                 ob += [self.robot.get_observable_state()]
         return ob
-
+    
     def render(self, mode='video', output_file=None):
         from matplotlib import animation
         import matplotlib.pyplot as plt
@@ -504,6 +595,10 @@ class CrowdSim(gym.Env):
         robot_color = 'black'
         arrow_style = patches.ArrowStyle("->", head_length=4, head_width=2)
         display_numbers = True
+
+        fig2,ax2 = plt.subplots()
+        ax2.set_xlim(-6,6)
+        ax2.set_ylim(-6,6)
 
         if mode == 'traj':
             fig, ax = plt.subplots(figsize=(7, 7))
@@ -538,6 +633,8 @@ class CrowdSim(gym.Env):
 
             robot_positions = [self.states[i][0].position for i in range(len(self.states))]
             human_positions = [[self.states[i][1][j].position for j in range(len(self.humans))]
+                               for i in range(len(self.states))]
+            human_velocities = [[self.states[i][1][j].velocity for j in range(len(self.humans))]
                                for i in range(len(self.states))]
 
             for k in range(len(self.states)):
@@ -606,6 +703,8 @@ class CrowdSim(gym.Env):
                     human_colors.append('#998ec3')
 
             human_positions = [[state[1][j].position for j in range(len(self.humans))] for state in self.states]
+            human_velocities = [[self.states[i][1][j].velocity for j in range(len(self.humans))]
+                               for i in range(len(self.states))]
             humans = [plt.Circle(human_positions[0][i], self.humans[i].radius)
                       for i in range(len(self.humans))]
             humans_patch = PatchCollection(humans, cmap=plt.cm.tab10, alpha=1.0)
@@ -617,7 +716,12 @@ class CrowdSim(gym.Env):
                 frames = len(self.states) - 1
             collide = False
 
+            self.grouper.humans = self.humans
+            self.grouper.states = self.states
             def update(frame_num):
+                # Call grouping functions
+                group_colors = self.grouper.group_color(frame_num)
+
                 nonlocal global_step
                 nonlocal frames
                 nonlocal collide
@@ -625,33 +729,202 @@ class CrowdSim(gym.Env):
 
                 robot.center = robot_positions[frame_num]
 
+
                 patches = []
                 for i in range(len(human_positions[frame_num])):
                     circle = plt.Circle(human_positions[frame_num][i], self.humans[i].radius)
                     patches.append(circle)
 
                 humans_patch.set_paths(patches)
-                colors_list = []
-                for i in range(len(human_colors)):
-                    colors_list.append(colors.to_rgb(human_colors[i]))
+                for i in range(len(humans)):
                     if np.sqrt((robot.center[0] - human_positions[frame_num][i][0])**2 + (robot.center[1] - human_positions[frame_num][i][1])**2) < 0.6:
-                        colors_list[i] = colors.to_rgb('#ff0000')
                         if not collide:
                             frames = frame_num
                             collide = True
-                color_arr = np.array(colors_list)
-                humans_patch.set_facecolor(color_arr)
+                humans_patch.set_facecolor(np.array(group_colors[1:]))
 
-            anim = animation.FuncAnimation(fig, update, frames=frames, interval=self.time_step * 500, blit=False)
+            def plot_value_heatmap():
+                assert self.robot.kinematics == 'holonomic'
+                for agent in [self.states[global_step][0]] + self.states[global_step][1]:
+                    print(('{:.4f}, ' * 6 + '{:.4f}').format(agent.px, agent.py, agent.gx, agent.gy,
+                                                             agent.vx, agent.vy, agent.theta))
+                # when any key is pressed draw the action value plot
+                fig, axis = plt.subplots()
+                speeds = [0] + self.robot.policy.speeds
+                rotations = self.robot.policy.rotations + [np.pi * 2]
+                r, th = np.meshgrid(speeds, rotations)
+                z = np.array(self.action_values[global_step % len(self.states)][1:])
+                z = (z - np.min(z)) / (np.max(z) - np.min(z))
+                z = np.reshape(z, (16, 5))
+                polar = plt.subplot(projection="polar")
+                polar.tick_params(labelsize=16)
+                mesh = plt.pcolormesh(th, r, z, vmin=0, vmax=1)
+                plt.plot(rotations, r, color='k', ls='none')
+                plt.grid()
+                cbaxes = fig.add_axes([0.85, 0.1, 0.03, 0.8])
+                cbar = plt.colorbar(mesh, cax=cbaxes)
+                cbar.ax.tick_params(labelsize=16)
+                plt.show()
+
+            def on_click(event):
+                anim.running ^= True
+                # anim2.running ^= True
+                if anim.running:
+                    anim.event_source.stop()
+                    # anim2.event_source.stop()
+                    if hasattr(self.robot.policy, 'action_values'):
+                        plot_value_heatmap()
+                else:
+                    anim.event_source.start()
+                    # anim2.event_source.start()
+
+            fig.canvas.mpl_connect('key_press_event', on_click)
+            # logging.info("am I here")
+            
+            anim = animation.FuncAnimation(fig, update, frames=len(self.states), interval=self.time_step * 1000)
+            anim.running = True
+
+
+            ##################################
+            ## begin group space generation ##
+            ##################################
+
+            def update_chull(frame):
+
+                ax2.cla() # clear axis
+                ax2.set_xlim(-6,6)
+                ax2.set_ylim(-6,6)
+                if frame <= 3:
+                    return
+                group_colors = self.grouper.group_color(frame)
+                print(self.grouper.group_colors)
+                print(self.grouper.group_labels)
+                groups = [[] for i in range(max(self.grouper.group_labels)+1)]
+                group_positions = [[] for i in range(max(self.grouper.group_labels)+1)]
+                group_velocities = [[] for i in range(max(self.grouper.group_labels)+1)]
+                for i,c in enumerate(self.grouper.group_labels):
+                    groups[c].append(i)
+                    group_positions[c].append(human_positions[frame][i])
+                    group_velocities[c].append(human_velocities[frame][i])
+
+                for i, j in enumerate(groups[0]):
+                    ind_pos = [group_positions[0][i]]
+                    ind_vel = [group_velocities[0][i]]
+                    shape = self.shaper.draw_social_shapes(ind_pos, ind_vel)
+                    polygon = patches.Polygon(shape, facecolor = group_colors[j])
+                    ax2.add_patch(polygon)
+                
+                for i in range(1,len(groups)):
+                    shape = self.shaper.draw_social_shapes(group_positions[i], group_velocities[i])
+                    polygon = patches.Polygon(shape, facecolor = group_colors[groups[i][0]])
+                    ax2.add_patch(polygon)
+
+
+                for i in range(1,len(groups)):
+                    shape = self.shaper.draw_social_shapes(group_positions[i], group_velocities[i])
+                    polygon = patches.Polygon(shape, facecolor = group_colors[groups[i][0]])
+                    ax2.add_patch(polygon)
+
+
+            def update_complete_polygon(frame):
+                ax2.cla() # clear axis
+                ax2.set_xlim(-6,6)
+                ax2.set_ylim(-6,6)
+                width = 0.5
+                if frame <= 3:
+                    return
+                group_colors = self.grouper.group_color(frame)
+                groups = [[] for i in range(max(self.grouper.group_labels)+1)]
+                group_positions = [[] for i in range(max(self.grouper.group_labels)+1)]
+                group_velocities = [[] for i in range(max(self.grouper.group_labels)+1)]
+                for i,c in enumerate(self.grouper.group_labels):
+                    groups[c].append(i)
+                    group_positions[c].append(human_positions[frame][i])
+                    group_velocities[c].append(human_velocities[frame][i])
+
+                def individual_patch(g_ind, i, col):
+                    individual_shape = patches.Circle(group_positions[g_ind][i],radius=width, color=col)
+                    ax2.add_patch(individual_shape)
+
+                
+                for g_ind in range(1,len(groups)):
+                    if len(groups[g_ind]) != 0: 
+                        col = group_colors[groups[g_ind][0]]
+                        perimeter_inds = []
+                        right,top,left,bottom = self.shaper.trace_polygon(groups,group_positions, g_ind)
+                        
+                        
+                        # cleanup returned perimeter by removing unecessary repeats (e.g. a point on the top and bottom)
+                        perimeter_inds = []
+                        right_adjusted = []
+                        for x in right:
+                            notLeftMost = False
+                            for y in range(len(groups[g_ind])):
+                                if group_positions[g_ind][y][0] < group_positions[g_ind][x][0]:
+                                    notLeftMost = True
+                            if notLeftMost:
+                                perimeter_inds.append(x)
+                                right_adjusted.append(x)
+
+                        top_adjusted = []
+                        for x in top:
+                            if x not in right_adjusted:
+                                perimeter_inds.append(x)
+                                top_adjusted.append(x)
+
+                        left_adjusted = []
+                        for x in left:
+                            good = True
+                            for y in top_adjusted:
+                                if group_positions[g_ind][x][1] >= group_positions[g_ind][y][1]:
+                                    good = False
+                            if good:
+                                perimeter_inds.append(x)
+                                left_adjusted.append(x)
+
+                        for x in bottom:
+                            good = True
+                            if x == perimeter_inds[0]:
+                                break
+                            for y in left_adjusted:
+                                if group_positions[g_ind][x][0] <= group_positions[g_ind][y][0]:
+                                    good = False
+                                    
+                            if good:
+                                perimeter_inds.append(x)
+                                left_adjusted.append(x)
+
+
+                        perimeter = [group_positions[g_ind][x] for x in perimeter_inds]
+
+                        agents = [groups[g_ind][x] for x in perimeter_inds]
+                        ax2.add_patch(patches.Polygon(perimeter, color = col))
+
+                        for x in perimeter_inds:
+                            individual_patch(g_ind,x,col)
+                    
+                
+            ## Convex hull space generation    
+            # update_chull(0)
+            # anim2 = animation.FuncAnimation(fig2, update_chull, frames=len(self.states), interval=self.time_step * 1000)
+
+            # Polygon space generation
+            update_complete_polygon(0)
+            anim2 = animation.FuncAnimation(fig2, update_complete_polygon, frames=len(self.states), interval=self.time_step * 1000)
+
+            anim2.running = True
+
+            ##################################
+            ## end group space generation ##
+            ##################################
+
 
             if output_file is not None:
-                # save as video
-                ffmpeg_writer = animation.FFMpegWriter(fps=10, metadata=dict(artist='Me'), bitrate=1800)
-                # writer = ffmpeg_writer(fps=10, metadata=dict(artist='Me'), bitrate=1800)
-                anim.save(output_file, writer=ffmpeg_writer)
-
-                # save output file as gif if imagemagic is installed
-                # anim.save(output_file, writer='imagemagic', fps=12)
-            plt.show()
+                ffmpeg_writer = animation.writers['ffmpeg']
+                writer = ffmpeg_writer(fps=8, metadata=dict(artist='Me'), bitrate=1800)
+                anim.save(output_file, writer=writer)
+            else:
+                plt.show()
         else:
             raise NotImplementedError
+        
