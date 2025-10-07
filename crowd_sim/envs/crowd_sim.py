@@ -81,10 +81,10 @@ class CrowdSim(gym.Env):
         self.phase = None
 
         # for grouping
-        self.group_colors = ['black']
-        self.group_labels = [0]
-        self.grouper = Grouper()
-        self.shaper = GroupSpaceGenerator()
+        # self.group_colors = ['black']
+        # self.group_labels = [0]
+        # self.grouper = Grouper()
+        # self.shaper = GroupSpaceGenerator()
 
     def sample_uniform(self, range):
         return random.randint(range[0], range[1])

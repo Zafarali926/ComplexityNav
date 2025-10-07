@@ -83,8 +83,6 @@ def set_params_passing_fixed(radius, agents, x_width, y_width, discomfort_dist):
             break
     return px, py, gx, gy, 0, 0, 0
 
-<<<<<<< HEAD
-=======
 def get_goal_sequence(num_goals, g, current_scenario, x_width, y_width):
     goals = []
     #goals.append(g)
@@ -125,7 +123,6 @@ def get_goal_sequence(num_goals, g, current_scenario, x_width, y_width):
 
     return goals
 
->>>>>>> private/main
 def generate_human_state(agents, x_width, y_width, discomfort_dist, policy=None, current_scenario='passing_crossing'):
         params = None
         if current_scenario == 'circle_crossing':
@@ -167,15 +164,10 @@ def generate_human_state(agents, x_width, y_width, discomfort_dist, policy=None,
 
             if sign == 1:
                 params = set_params_passing_fixed(0.3, agents, x_width, y_width, discomfort_dist)
-<<<<<<< HEAD
-            else:
-                params = set_params_crossing_fixed(0.3, agents, x_width, y_width, discomfort_dist)
-=======
                 current_scenario = 'passing'
             else:
                 params = set_params_crossing_fixed(0.3, agents, x_width, y_width, discomfort_dist)
                 current_scenario = 'crossing'
->>>>>>> private/main
 
         elif current_scenario == 'random':
             while True:
@@ -206,18 +198,11 @@ def generate_human_state(agents, x_width, y_width, discomfort_dist, policy=None,
             params[3] = params[1] + 1e-2
             params = tuple(params)
 
-<<<<<<< HEAD
-        return params
-
-def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, current_scenario):
-        states = []
-=======
         return params, current_scenario
 
 def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, current_scenario):
         states = []
         goals = []
->>>>>>> private/main
         num_policies = {
             'orca' : num_orca,
             'socialforce' : num_sf,
@@ -226,24 +211,11 @@ def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, 
         }
         for i in range(length):
             states_i = {}
-<<<<<<< HEAD
-=======
             goals_i = {}
->>>>>>> private/main
             agents = [(0, -4, 0, 4, 0, 0, np.pi / 2)]
             for policy in num_policies:
                 for _ in range(num_policies[policy]):
                     if policy in states_i:
-<<<<<<< HEAD
-                        params = generate_human_state(agents, x_width, y_width, discomfort_dist, policy=policy, current_scenario=current_scenario)
-                        states_i[policy].append(params)
-                        agents.append(params)
-                    else:
-                        states_i[policy] = [generate_human_state(agents, x_width, y_width, discomfort_dist, policy=policy, current_scenario=current_scenario)]
-            states.append(states_i)
-
-        return states
-=======
                         params, current_scenario_mod = generate_human_state(agents, x_width, y_width, discomfort_dist, policy=policy, current_scenario=current_scenario)
                         states_i[policy].append(params)
                         goal_list = get_goal_sequence(100, (params[2], params[3]), current_scenario_mod, x_width, y_width)
@@ -257,7 +229,6 @@ def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, 
             goals.append(goals_i)
 
         return states, goals
->>>>>>> private/main
 
 def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not work with randomized radii yet, fixed at 0.3m for now
     if ec.exp.random_seed:
@@ -268,17 +239,11 @@ def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not 
     random.seed(seed)
 
     scenarios = []
-<<<<<<< HEAD
-
-    for e in range(len(ec.exp.dx)):
-        scenarios_e = []
-=======
     goals = []
 
     for e in range(len(ec.exp.dx)):
         scenarios_e = []
         goals_e = []
->>>>>>> private/main
         for se in range(len(ec.exp.dx[e])):
             # configure environment
             x_width = (ec.exp.dx[e][se][1] - ec.exp.dx[e][se][0]) - (2 * radius + 1e-2)
@@ -289,13 +254,6 @@ def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not 
             num_linear = ec.exp.num_linear[e][se][0]
             test_scenario = ec.exp.scenarios[e][se]
 
-<<<<<<< HEAD
-            scenarios_e.append(generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, test_scenario))
-        
-        scenarios.append(scenarios_e)
-
-    return scenarios
-=======
             s, g = generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, test_scenario)
             scenarios_e.append(s)
             goals_e.append(g)
@@ -304,4 +262,3 @@ def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not 
         goals.append(goals_e)
 
     return scenarios, goals
->>>>>>> private/main
