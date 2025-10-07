@@ -1,8 +1,3 @@
-"""
-Never Modify this file! Always copy the settings you want to change to your local file.
-"""
-
-
 import numpy as np
 import os
 import yaml
@@ -48,7 +43,7 @@ class BaseExperimentsConfig(object):
 
 class BaseEnvConfig(object):
     env = Config()
-    env.time_limit = 30
+    env.time_limit = 50
     env.time_step = 0.25
     env.val_size = 500
     env.test_size = 500
@@ -99,11 +94,12 @@ class BaseEnvConfig(object):
     MPC = Config()
     MPC.model = 'sgan' #Change to sgan/cv for mpc methods
     MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan.yaml' #Change to sgan/cv for mpc methods
+    #MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan_mppi.yaml' #Change to sgan/cv for mpc methods
     with open(MPC.path, "r") as fin:
         MPC.mpc = yaml.safe_load(fin)
     print("MPC: ", MPC.mpc)
     MPC.mpc['params']['dt'] = 0.25
-    MPC.mpc['params']['prediction_length'] = 1.25
+    MPC.mpc['params']['prediction_length'] = 1.75
     MPC.save_path = "REAL_WORLD"
     MPC.exp_name = "REAL_WORLD"
     MPC.multiagent_training = True

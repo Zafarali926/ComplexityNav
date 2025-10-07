@@ -63,7 +63,7 @@ class ORCA(Policy):
         self.time_horizon = 5
         self.time_horizon_obst = 5
         self.radius = 0.3
-        self.max_speed = 1
+        self.max_speed = 0.5
         self.sim = None
         self.time_step = 0.25
 

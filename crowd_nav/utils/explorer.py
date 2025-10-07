@@ -9,7 +9,7 @@ import numpy as np
 
 
 class Explorer(object):
-    def __init__(self, env, robot, device, writer, memory=None, gamma=None, scenarios=None, target_policy=None):
+    def __init__(self, env, robot, device, writer, memory=None, gamma=None, scenarios=None, goals=None, target_policy=None):
         self.env = env
         self.robot = robot
         self.device = device
@@ -19,6 +19,7 @@ class Explorer(object):
         self.target_policy = target_policy
         self.statistics = None
         self.scenarios = scenarios
+        self.goals = goals
 
     def compute_path_irregularity(self, action, direct_action):
         a = np.arctan2(action.vx, action.vy)
@@ -54,7 +55,7 @@ class Explorer(object):
 
         for i in range(k):
             if self.scenarios is not None:
-                ob = self.env.reset(phase, self.scenarios[i])
+                ob = self.env.reset(phase, self.scenarios[i], self.goals[i])
             else:
                 ob = self.env.reset(phase)
             self.env.scenario_num = self.env.scenario_num + 1
@@ -94,11 +95,13 @@ class Explorer(object):
                 average_path_irregularity.append(sum(pis) / path_length)
 
             elif isinstance(info, Collision):
+                print("ADDING COLLISION")
                 collision += 1
                 collision_cases.append(i)
                 collision_times.append(self.env.global_time)
                 timesteps.append(self.env.num_steps)
             elif isinstance(info, Timeout):
+                print("ADDING TIMEOUT")
                 timeout += 1
                 timeout_cases.append(i)
                 timeout_times.append(self.env.time_limit)
