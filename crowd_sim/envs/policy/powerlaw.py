@@ -6,7 +6,7 @@ _EPSILON = 1e-5
 
 
 def _compute_power_law_force(px, py, vx, vy, radius, opx, opy, ovx, ovy, oradius,
-                             k=1.5, tau0=3.0, safety_space=0.01):
+                             k=1.5, tau0=3.0, safety_space=0.01, tau_min=0.05):
     """Interaction force from Karamouzas et al. (2014), ported from UMANS PowerLaw.cpp."""
     R = oradius + radius + 2.0 * safety_space
     x = np.array([px - opx, py - opy], dtype=np.float64)
@@ -27,13 +27,16 @@ def _compute_power_law_force(px, py, vx, vy, radius, opx, opy, ovx, ovy, oradius
     if tau < 0.001 or tau > tau0:
         return np.zeros(2)
 
-    component1 = -k * np.exp(-tau / tau0) * (2.0 / tau + 1.0 / tau0) / (a * tau * tau)
+    # Keep TTC gating unchanged, but regularize denominator near tau -> 0 to avoid spikes.
+    tau_eff = max(tau, tau_min)
+    component1 = -k * np.exp(-tau / tau0) * (2.0 / tau_eff + 1.0 / tau0) / (a * tau_eff * tau_eff)
     component2 = v - (a * x + b * v) / sqrt_d
     force = component1 * component2
+    # Smoothly saturate very large forces near singular TTC to reduce frame-to-frame jitter.
     max_force = 10.0
     mag = np.linalg.norm(force)
-    if mag > max_force:
-        force = force * (max_force / mag)
+    if mag > _EPSILON:
+        force = force * (np.tanh(mag / max_force) * max_force / mag)
     return force
 
 
@@ -58,7 +61,8 @@ def _clip_velocity(vx, vy, max_speed):
     return vx, vy
 
 
-def _predict_full_state(agent_state, neighbors, k, tau0, neighbor_dist, time_step, tau_g, safety_space):
+def _predict_full_state(agent_state, neighbors, k, tau0, neighbor_dist, time_step, tau_g, safety_space,
+                        vel_blend=0.75, tau_min=0.05):
     total_force = _goal_force(
         agent_state.px, agent_state.py, agent_state.gx, agent_state.gy,
         agent_state.vx, agent_state.vy, agent_state.v_pref, tau_g=tau_g)
@@ -70,10 +74,13 @@ def _predict_full_state(agent_state, neighbors, k, tau0, neighbor_dist, time_ste
         total_force += _compute_power_law_force(
             agent_state.px, agent_state.py, agent_state.vx, agent_state.vy, agent_state.radius,
             other.px, other.py, other.vx, other.vy, other.radius,
-            k=k, tau0=tau0, safety_space=safety_space)
+            k=k, tau0=tau0, safety_space=safety_space, tau_min=tau_min)
 
-    vx = agent_state.vx + total_force[0] * time_step
-    vy = agent_state.vy + total_force[1] * time_step
+    vx_raw = agent_state.vx + total_force[0] * time_step
+    vy_raw = agent_state.vy + total_force[1] * time_step
+    # Velocity blending damps frame-to-frame switching in close interactions.
+    vx = vel_blend * vx_raw + (1.0 - vel_blend) * agent_state.vx
+    vy = vel_blend * vy_raw + (1.0 - vel_blend) * agent_state.vy
     vx, vy = _clip_velocity(vx, vy, agent_state.v_pref)
     return ActionXY(vx, vy)
 
@@ -87,10 +94,13 @@ class PowerLaw(Policy):
         self.kinematics = 'holonomic'
         self.k = 1.5
         self.tau0 = 3.0
-        self.tau_g = 0.5
+        self.tau_g = 0.8
         self.neighbor_dist = 10.0
         self.safety_space = 0.01  # matches ORCA agent buffer (radius + 0.01 per side)
-        self.time_step = 0.25
+        self.tau_min = 0.05
+        self.vel_blend = 0.75
+        # Smaller integration step improves stability while preserving Power Law dynamics.
+        self.time_step = 0.1
 
     def configure(self, config):
         return
@@ -103,7 +113,7 @@ class PowerLaw(Policy):
         neighbors = state.human_states
         action = _predict_full_state(
             self_state, neighbors, self.k, self.tau0, self.neighbor_dist, self.time_step, self.tau_g,
-            self.safety_space)
+            self.safety_space, self.vel_blend, self.tau_min)
         self.last_state = state
         return action
 
@@ -115,5 +125,5 @@ class CentralizedPowerLaw(PowerLaw):
             neighbors = [s for j, s in enumerate(state) if j != i]
             actions.append(_predict_full_state(
                 agent_state, neighbors, self.k, self.tau0, self.neighbor_dist, self.time_step, self.tau_g,
-                self.safety_space))
+                self.safety_space, self.vel_blend, self.tau_min))
         return actions

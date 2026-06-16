@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import socialforce
 from crowd_sim.envs.policy.policy import Policy
 from crowd_sim.envs.utils.action import ActionXY
@@ -23,6 +24,17 @@ class SocialForce(Policy):
     def set_phase(self, phase):
         return
 
+    def _socialforce_row(self, px, py, vx, vy, gx, gy, v_pref):
+        """Build a 10-dim socialforce state: pos, vel, accel, dest, tau, preferred speed."""
+        pref = float(v_pref) if v_pref is not None else self.initial_speed
+        if pref < 1e-3:
+            pref = 1e-3
+        return [px, py, vx, vy, 0.0, 0.0, gx, gy, 0.5, pref]
+
+    def _preferred_speed(self, agent_state, fallback):
+        """FullState has v_pref; ObservableState (robot obs of humans) does not."""
+        return getattr(agent_state, 'v_pref', fallback)
+
     def predict(self, state, border=None):
         """
 
@@ -31,7 +43,9 @@ class SocialForce(Policy):
         """
         sf_state = []
         self_state = state.robot_state
-        sf_state.append((self_state.px, self_state.py, self_state.vx, self_state.vy, self_state.gx, self_state.gy))
+        sf_state.append(self._socialforce_row(
+            self_state.px, self_state.py, self_state.vx, self_state.vy,
+            self_state.gx, self_state.gy, self_state.v_pref))
         for human_state in state.human_states:
             # approximate desired direction with current velocity
             if human_state.vx == 0 and human_state.vy == 0:
@@ -40,11 +54,13 @@ class SocialForce(Policy):
             else:
                 gx = human_state.px + human_state.vx
                 gy = human_state.py + human_state.vy
-            sf_state.append((human_state.px, human_state.py, human_state.vx, human_state.vy, gx, gy))
-        sim = socialforce.Simulator(np.array(sf_state), delta_t=self.time_step, initial_speed=self.initial_speed,
-                                    v0=self.v0, sigma=self.sigma)
-        sim.step()
-        action = ActionXY(sim.state[0, 2], sim.state[0, 3])
+            sf_state.append(self._socialforce_row(
+                human_state.px, human_state.py, human_state.vx, human_state.vy,
+                gx, gy, self._preferred_speed(human_state, self_state.v_pref)))
+        sim = socialforce.Simulator(delta_t=self.time_step)
+        trajectory = sim.run(torch.tensor(sf_state, dtype=torch.float32), n_steps=1)
+        new_state = trajectory[-1]
+        action = ActionXY(new_state[0, 2].item(), new_state[0, 3].item())
         #if border is not None and self.outside_check([sim.state[0, 0], sim.state[0, 1]], self_state.radius, border):
         #    action = ActionXY(0.0, 0.0)
 
@@ -75,14 +91,15 @@ class CentralizedSocialForce(SocialForce):
     def predict(self, state, border=None):
         sf_state = []
         for agent_state in state:
-            sf_state.append((agent_state.px, agent_state.py, agent_state.vx, agent_state.vy,
-                             agent_state.gx, agent_state.gy))
+            sf_state.append(self._socialforce_row(
+                agent_state.px, agent_state.py, agent_state.vx, agent_state.vy,
+                agent_state.gx, agent_state.gy, agent_state.v_pref))
 
-        sim = socialforce.Simulator(np.array(sf_state), delta_t=self.time_step, initial_speed=self.initial_speed,
-                                    v0=self.v0, sigma=self.sigma)
-
-        sim.step()
-        actions = [ActionXY(sim.state[i, 2], sim.state[i, 3]) for i in range(len(state))]
+        sim = socialforce.Simulator(delta_t=self.time_step)
+        trajectory = sim.run(torch.tensor(sf_state, dtype=torch.float32), n_steps=1)
+        new_state = trajectory[-1]
+        actions = [
+            ActionXY(new_state[i, 2].item(), new_state[i, 3].item())
+            for i in range(len(state))]
         del sim
-
         return actions

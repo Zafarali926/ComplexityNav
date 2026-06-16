@@ -14,3 +14,5 @@ data/
 *.mp4
 videos/
 *.log
+REAL_WORLD/
+.venv/  

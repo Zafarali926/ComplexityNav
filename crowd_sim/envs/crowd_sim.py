@@ -20,7 +20,26 @@ import crowd_sim.envs.utils.utils as utils
 from crowd_sim.envs.policy.orca import ORCA
 from crowd_sim.envs.policy.linear import Linear
 from crowd_sim.envs.policy.socialforce import SocialForce
+from crowd_sim.envs.policy.powerlaw import PowerLaw
+from crowd_sim.envs.policy.pledestrians import PLEdestrians
 from crowd_sim.envs.grouping.grouping_functions import *
+
+
+def _human_policy_color(human, cmap=None, mode='video'):
+    """Map a human's policy to a display color for render()."""
+    if isinstance(human.policy, SocialForce):
+        return '#4575b4' if mode == 'video' else cmap(0)
+    if isinstance(human.policy, ORCA):
+        return '#1a9850' if mode == 'video' else cmap(1)
+    if isinstance(human.policy, PowerLaw):
+        return '#e66101' if mode == 'video' else '#e66101'
+    if isinstance(human.policy, PLEdestrians):
+        return '#9970ab' if mode == 'video' else '#9970ab'
+    if isinstance(human.policy, Linear):
+        if human.v_pref < 0.01:
+            return '#d73027'
+        return '#998ec3' if mode == 'video' else cmap(2)
+    return '#808080'
 
 
 class CrowdSim(gym.Env):
@@ -120,9 +139,21 @@ class CrowdSim(gym.Env):
             else:
                 num_static = config.humans.num_static[0]
 
+        if len(config.humans.num_powerlaw) > 1:
+            num_powerlaw = self.sample_uniform(config.humans.num_powerlaw)
+        else:
+            num_powerlaw = config.humans.num_powerlaw[0]
+
+        if len(config.humans.num_pledestrians) > 1:
+            num_pledestrians = self.sample_uniform(config.humans.num_pledestrians)
+        else:
+            num_pledestrians = config.humans.num_pledestrians[0]
+
         self.num_policies = {
             'orca' : num_orca,
             'socialforce' : num_sf,
+            'powerlaw' : num_powerlaw,
+            'pledestrians' : num_pledestrians,
             'linear' : num_linear,
             'static' : num_static
         }
@@ -199,6 +230,36 @@ class CrowdSim(gym.Env):
             
         return min_dist
     
+    def generate_human(self, human=None, policy=None):
+        """
+        Generate a human with a random state. Used in non-multi-policy scenarios.
+        If policy is specified (in multi-policy mode), generates human with that policy.
+        """
+        if human is None:
+            if policy is not None and self.multi_policy:
+                # Multi-policy mode: create human with specified policy
+                if policy == 'static':
+                    human = Human(self.config, 'humans', policy=policy_factory['linear']())
+                else:
+                    human = Human(self.config, 'humans', policy=policy_factory[policy]())
+            else:
+                # Single-policy mode: create human with default policy
+                human = Human(self.config, 'humans')
+            if self.randomize_attributes:
+                human.sample_random_attributes()
+        
+        # Generate random state for human
+        agents = [self.robot.get_set_state()] + [human.get_set_state() for human in self.humans]
+        human_state, _ = utils.generate_human_state(agents, self.x_width, self.y_width, 
+                                                     self.discomfort_dist, policy=policy,
+                                                     current_scenario=self.current_scenario)
+        human.set(*human_state)
+        
+        if policy == 'static':
+            human.v_pref = 1e-4
+        
+        return human
+
     def generate_human_from_state(self, policy, state, human=None):
         if human is None:
             if self.multi_policy:
@@ -502,9 +563,10 @@ class CrowdSim(gym.Env):
                             #print("PREVIOUS GOAL: ", human.gx, human.gy) 
                             #self.generate_human_from_state(policy=human.policy.name, state=utils.generate_human_state(agents, self.x_width, self.y_width, self.discomfort_dist, None, self.current_scenario, start=(human.px, human.py)), human=human)
                             #print("HUMAN CURRENT GOAL: ", human.current_goal, len(human.goals), len(human.goals[human.current_goal]))
-                            human.gx = human.goals[human.current_goal][0]
-                            human.gy = human.goals[human.current_goal][1]
-                            human.current_goal = human.current_goal + 1
+                            if human.current_goal < len(human.goals):
+                                human.gx = human.goals[human.current_goal][0]
+                                human.gy = human.goals[human.current_goal][1]
+                                human.current_goal = human.current_goal + 1
                             #print("NEXT GOAL: ", human.gx, human.gy, human.current_goal)
                     else:
                         human.v_pref = 1e-2
@@ -555,10 +617,6 @@ class CrowdSim(gym.Env):
         arrow_style = patches.ArrowStyle("->", head_length=4, head_width=2)
         display_numbers = True
 
-        fig2,ax2 = plt.subplots()
-        ax2.set_xlim(-6,6)
-        ax2.set_ylim(-6,6)
-
         if mode == 'traj':
             fig, ax = plt.subplots(figsize=(7, 7))
 
@@ -568,16 +626,7 @@ class CrowdSim(gym.Env):
             ax.set_xlabel('x(m)', fontsize=16)
             ax.set_ylabel('y(m)', fontsize=16)
 
-            # add human start positions and goals
-            #human_colors = [cmap(i) for i in range(len(self.humans))]
-            human_colors = []
-            for h in self.humans:
-                if isinstance(h.policy, SocialForce):
-                    human_colors.append(cmap(0))
-                elif isinstance(h.policy, ORCA):
-                    human_colors.append(cmap(1))
-                elif isinstance(h.policy, Linear):
-                    human_colors.append(cmap(2))
+            human_colors = [_human_policy_color(h, cmap=cmap, mode='traj') for h in self.humans]
 
             for i in range(len(self.humans)):
                 human = self.humans[i]
@@ -652,14 +701,7 @@ class CrowdSim(gym.Env):
                 ax.plot([self.orca_border[i][0], self.orca_border[i+1][0]], [self.orca_border[i][1], self.orca_border[i+1][1]], color='black')
             ax.plot([self.orca_border[3][0], self.orca_border[0][0]], [self.orca_border[3][1], self.orca_border[0][1]], color='black')
 
-            human_colors = []
-            for h in self.humans:
-                if isinstance(h.policy, SocialForce):
-                    human_colors.append('#4575b4')
-                elif isinstance(h.policy, ORCA):
-                    human_colors.append('#1a9850')
-                elif isinstance(h.policy, Linear):
-                    human_colors.append('#998ec3')
+            human_colors = [_human_policy_color(h, mode='video') for h in self.humans]
 
             human_positions = [[state[1][j].position for j in range(len(self.humans))] for state in self.states]
             humans = [plt.Circle(human_positions[0][i], self.humans[i].radius)
@@ -693,15 +735,15 @@ class CrowdSim(gym.Env):
 
                 humans_patch.set_paths(patches)
                 colors_list = []
-                for i in range(len(human_colors)):
-                    colors_list.append(colors.to_rgb(human_colors[i]))
+                for i in range(len(self.humans)):
+                    color = human_colors[i] if i < len(human_colors) else '#808080'
+                    colors_list.append(colors.to_rgb(color))
                     if np.sqrt((robot.center[0] - human_positions[frame_num][i][0])**2 + (robot.center[1] - human_positions[frame_num][i][1])**2) < 0.6:
                         colors_list[i] = colors.to_rgb('#ff0000')
                         if not collide:
                             frames = frame_num
                             collide = True
-                color_arr = np.array(colors_list)
-                humans_patch.set_facecolor(color_arr)
+                humans_patch.set_facecolor(np.array(colors_list))
 
             anim = animation.FuncAnimation(fig, update, frames=frames, interval=self.time_step * 500, blit=False)
 

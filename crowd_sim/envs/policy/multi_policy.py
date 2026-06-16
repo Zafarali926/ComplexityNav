@@ -4,6 +4,8 @@ from crowd_sim.envs.policy.policy import Policy
 from crowd_sim.envs.utils.action import ActionXY
 from crowd_sim.envs.policy.socialforce import CentralizedSocialForce, SocialForce
 from crowd_sim.envs.policy.orca import CentralizedORCA, ORCA
+from crowd_sim.envs.policy.powerlaw import CentralizedPowerLaw, PowerLaw
+from crowd_sim.envs.policy.pledestrians import CentralizedPLEdestrians, PLEdestrians
 from crowd_sim.envs.policy.linear import Linear
 
 class CentralizedMultiPolicy(Policy):
@@ -30,11 +32,17 @@ class CentralizedMultiPolicy(Policy):
     def predict(self, state, policies=None, orca_border=None, sfm_border=None):
         centralized_sf = CentralizedSocialForce()
         centralized_orca = CentralizedORCA()
+        centralized_powerlaw = CentralizedPowerLaw()
+        centralized_pledestrians = CentralizedPLEdestrians()
         linear = Linear()
 
         sf_actions = centralized_sf.predict(state, sfm_border)
 
         orca_actions = centralized_orca.predict(state, orca_border)
+
+        powerlaw_actions = centralized_powerlaw.predict(state)
+
+        pledestrians_actions = centralized_pledestrians.predict(state)
 
 
         if policies is not None:
@@ -44,6 +52,10 @@ class CentralizedMultiPolicy(Policy):
                     actions.append(sf_actions[i])
                 elif isinstance(policies[i], ORCA):
                     actions.append(orca_actions[i])
+                elif isinstance(policies[i], PowerLaw):
+                    actions.append(powerlaw_actions[i])
+                elif isinstance(policies[i], PLEdestrians):
+                    actions.append(pledestrians_actions[i])
                 elif isinstance(policies[i], Linear):
                     actions.append(linear.predict(state[i]))
 

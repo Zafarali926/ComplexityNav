@@ -200,12 +200,15 @@ def generate_human_state(agents, x_width, y_width, discomfort_dist, policy=None,
 
         return params, current_scenario
 
-def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, current_scenario):
+def generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static,
+                             current_scenario, num_powerlaw=0, num_pledestrians=0):
         states = []
         goals = []
         num_policies = {
             'orca' : num_orca,
             'socialforce' : num_sf,
+            'powerlaw' : num_powerlaw,
+            'pledestrians' : num_pledestrians,
             'linear' : num_linear,
             'static' : num_static
         }
@@ -252,9 +255,13 @@ def random_sequence(ec, length=500, radius=0.3, discomfort_dist=0.2): #Does not 
             num_orca = ec.exp.num_orca[e][se][0]
             num_static = ec.exp.num_static[e][se][0]
             num_linear = ec.exp.num_linear[e][se][0]
+            num_powerlaw = ec.exp.num_powerlaw[e][se][0] if hasattr(ec.exp, 'num_powerlaw') else 0
+            num_pledestrians = ec.exp.num_pledestrians[e][se][0] if hasattr(ec.exp, 'num_pledestrians') else 0
             test_scenario = ec.exp.scenarios[e][se]
 
-            s, g = generate_scenarios_fixed(length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static, test_scenario)
+            s, g = generate_scenarios_fixed(
+                length, radius, x_width, y_width, discomfort_dist, num_orca, num_sf, num_linear, num_static,
+                test_scenario, num_powerlaw=num_powerlaw, num_pledestrians=num_pledestrians)
             scenarios_e.append(s)
             goals_e.append(g)
         
