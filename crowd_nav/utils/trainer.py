@@ -64,7 +64,8 @@ class MPRLTrainer(object):
         if self.v_optimizer is None:
             raise ValueError('Learning rate is not set!')
         if self.data_loader is None:
-            self.data_loader = DataLoader(self.memory, self.batch_size, shuffle=True)
+            self.data_loader = DataLoader(self.memory, self.batch_size, shuffle=True, 
+                                         pin_memory=True, num_workers=0)
 
         for epoch in range(num_epochs):
             epoch_v_loss = 0
@@ -74,11 +75,16 @@ class MPRLTrainer(object):
             update_counter = 0
             for data in self.data_loader:
                 robot_states, human_states, values, _, _, next_human_states = data
+                
+                # Move all data to device
+                robot_states = robot_states.to(self.device)
+                human_states = human_states.to(self.device)
+                values = values.to(self.device)
+                next_human_states = next_human_states.to(self.device)
 
                 # optimize value estimator
                 self.v_optimizer.zero_grad()
                 outputs = self.value_estimator((robot_states, human_states))
-                values = values.to(self.device)
                 loss = self.criterion(outputs, values)
                 loss.backward()
                 self.v_optimizer.step()
@@ -111,12 +117,20 @@ class MPRLTrainer(object):
         if self.v_optimizer is None:
             raise ValueError('Learning rate is not set!')
         if self.data_loader is None:
-            self.data_loader = DataLoader(self.memory, self.batch_size, shuffle=True)
+            self.data_loader = DataLoader(self.memory, self.batch_size, shuffle=True,
+                                         pin_memory=True, num_workers=0)
         v_losses = 0
         s_losses = 0
         batch_count = 0
         for data in self.data_loader:
             robot_states, human_states, _, rewards, next_robot_states, next_human_states = data
+
+            # Move all data to device
+            robot_states = robot_states.to(self.device)
+            human_states = human_states.to(self.device)
+            rewards = rewards.to(self.device)
+            next_robot_states = next_robot_states.to(self.device)
+            next_human_states = next_human_states.to(self.device)
 
             # optimize value estimator
             self.v_optimizer.zero_grad()
@@ -124,8 +138,6 @@ class MPRLTrainer(object):
 
             gamma_bar = pow(self.gamma, self.time_step * self.v_pref)
             target_values = rewards + gamma_bar * self.target_model((next_robot_states, next_human_states))
-
-            # values = values.to(self.device)
             loss = self.criterion(outputs, target_values)
             loss.backward()
             self.v_optimizer.step()
@@ -200,16 +212,18 @@ class VNRLTrainer(object):
         if self.optimizer is None:
             raise ValueError('Learning rate is not set!')
         if self.data_loader is None:
-            self.data_loader = DataLoader(self.memory, self.batch_size, shuffle=True, collate_fn=pad_batch)
+            self.data_loader = DataLoader(self.memory, self.batch_size, shuffle=True, collate_fn=pad_batch,
+                                         pin_memory=True, num_workers=0)
         average_epoch_loss = 0
         for epoch in range(num_epochs):
             epoch_loss = 0
             logging.debug('{}-th epoch starts'.format(epoch))
             for data in self.data_loader:
                 inputs, values, _, _ = data
+                inputs = _move_padded_states_to_device(inputs, self.device)
+                values = values.to(self.device)
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
-                values = values.to(self.device)
                 loss = self.criterion(outputs, values)
                 loss.backward()
                 self.optimizer.step()
@@ -230,6 +244,9 @@ class VNRLTrainer(object):
         batch_count = 0
         for data in self.data_loader:
             inputs, _, rewards, next_states = data
+            inputs = _move_padded_states_to_device(inputs, self.device)
+            next_states = _move_padded_states_to_device(next_states, self.device)
+            rewards = rewards.to(self.device)
             self.optimizer.zero_grad()
             outputs = self.model(inputs)
 
@@ -248,6 +265,16 @@ class VNRLTrainer(object):
         logging.info('Average loss : %.2E', average_loss)
 
         return average_loss
+
+
+def _move_padded_states_to_device(states, device):
+    """pad_batch returns (padded_tensor, lengths) from pad_packed_sequence."""
+    if isinstance(states, (tuple, list)) and len(states) == 2 and torch.is_tensor(states[0]):
+        padded, lengths = states
+        return padded.to(device), lengths
+    if torch.is_tensor(states):
+        return states.to(device)
+    raise TypeError('Expected padded (tensor, lengths) pair or tensor, got {}'.format(type(states)))
 
 
 def pad_batch(batch):

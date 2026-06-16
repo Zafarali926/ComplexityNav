@@ -83,7 +83,7 @@ class ValueNetwork(nn.Module):
         return normalized_A
 
     def forward(self, state_input):
-        if isinstance(state_input, tuple):
+        if isinstance(state_input, (tuple, list)) and len(state_input) == 2:
             state, lengths = state_input
         else:
             state = state_input

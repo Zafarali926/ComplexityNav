@@ -6,6 +6,8 @@ import itertools
 from crowd_sim.envs.policy.policy import Policy
 from crowd_sim.envs.policy.socialforce import SocialForce
 from crowd_sim.envs.policy.orca import ORCA
+from crowd_sim.envs.policy.powerlaw import PowerLaw
+from crowd_sim.envs.policy.pledestrians import PLEdestrians
 from crowd_sim.envs.utils.action import ActionRot, ActionXY
 from crowd_sim.envs.utils.state import tensor_to_joint_state
 from crowd_sim.envs.utils.utils import point_to_segment_dist
@@ -263,6 +265,14 @@ class ModelPredictiveRL(Policy):
             elif baseline == 'orca':
                 orca = ORCA()
                 action = orca.predict(state, border=border)
+                max_action = action
+            elif baseline == 'powerlaw':
+                pl = PowerLaw()
+                action = pl.predict(state, border=border)
+                max_action = action
+            elif baseline == 'pledestrians':
+                pld = PLEdestrians()
+                action = pld.predict(state, border=border)
                 max_action = action
             elif baseline == 'cv':
                 self_state = state.robot_state

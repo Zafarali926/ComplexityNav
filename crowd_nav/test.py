@@ -16,6 +16,69 @@ import time
 from numpy.linalg import norm
 import json
 
+from crowd_nav.human_mix_presets import HUMAN_MIX_PRESETS
+
+
+def apply_human_mix(env_config, args):
+    """Set multipolicy human counts from --human_mix or --num_* flags."""
+    mix = None
+    if args.human_mix is not None:
+        if args.human_mix not in HUMAN_MIX_PRESETS:
+            raise ValueError('Unknown human_mix {!r}. Choices: {}'.format(
+                args.human_mix, ', '.join(HUMAN_MIX_PRESETS)))
+        mix = HUMAN_MIX_PRESETS[args.human_mix]
+    else:
+        mix = {}
+        if args.num_orca is not None:
+            mix['orca'] = args.num_orca
+        if args.num_sf is not None:
+            mix['sf'] = args.num_sf
+        if args.num_linear is not None:
+            mix['linear'] = args.num_linear
+        if args.num_static is not None:
+            mix['static'] = args.num_static
+        if args.num_powerlaw is not None:
+            mix['powerlaw'] = args.num_powerlaw
+        if args.num_pledestrians is not None:
+            mix['pledestrians'] = args.num_pledestrians
+        if not mix:
+            return False
+
+    env_config.humans.num_orca = [mix.get('orca', env_config.humans.num_orca[0])]
+    env_config.humans.num_sf = [mix.get('sf', env_config.humans.num_sf[0])]
+    env_config.humans.num_powerlaw = [mix.get('powerlaw', env_config.humans.num_powerlaw[0])]
+    env_config.humans.num_pledestrians = [mix.get('pledestrians', env_config.humans.num_pledestrians[0])]
+    env_config.humans.num_linear = [mix.get('linear', env_config.humans.num_linear[0])]
+    env_config.humans.num_static = [mix.get('static', env_config.humans.num_static[0])]
+    logging.info('Human mix: %d ORCA, %d Social Force, %d Power Law, %d PLEdestrians, %d CV (linear), %d static',
+                 env_config.humans.num_orca[0], env_config.humans.num_sf[0],
+                 env_config.humans.num_powerlaw[0], env_config.humans.num_pledestrians[0],
+                 env_config.humans.num_linear[0], env_config.humans.num_static[0])
+    return True
+
+
+def use_config_human_mix(args):
+    return (args.human_mix is not None or args.num_orca is not None or args.num_sf is not None
+            or args.num_powerlaw is not None or args.num_pledestrians is not None
+            or args.num_linear is not None or args.num_static is not None)
+
+
+def apply_exp_cell(env_config, ec, e, se):
+    """Apply benchmark grid cell (exp_e, exp_se) to env_config."""
+    env_config.env.dx_range = ec.exp.dx[e][se]
+    env_config.env.dy_range = ec.exp.dy[e][se]
+    env_config.env.randomize_attributes = ec.exp.randomize_attributes[e][se]
+    env_config.humans.num_sf = ec.exp.num_sf[e][se]
+    env_config.humans.num_orca = ec.exp.num_orca[e][se]
+    env_config.humans.num_static = ec.exp.num_static[e][se]
+    env_config.humans.num_linear = ec.exp.num_linear[e][se]
+    if hasattr(ec.exp, 'num_powerlaw'):
+        env_config.humans.num_powerlaw = ec.exp.num_powerlaw[e][se]
+    if hasattr(ec.exp, 'num_pledestrians'):
+        env_config.humans.num_pledestrians = ec.exp.num_pledestrians[e][se]
+    env_config.sim.test_scenario = ec.exp.scenarios[e][se]
+
+
 def main_experiments(args):
 
     # configure logging and device
@@ -46,21 +109,46 @@ def main_experiments(args):
     else:
         config_file = args.config
 
+    if config_file is None:
+        raise SystemExit('Provide --config or --model_dir')
+
+    if args.model_dir is not None:
+        output_dir = args.model_dir
+    else:
+        output_dir = os.path.dirname(os.path.abspath(config_file))
+
     spec = importlib.util.spec_from_file_location('config', config_file)
     if spec is None:
         parser.error('Config file not found.')
     config = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(config)
 
-    ec = config.ExperimentsConfig(args.debug)
-    scenarios, goals = utils.random_sequence(ec)
+    if hasattr(config, 'ExperimentsConfig'):
+        ec = config.ExperimentsConfig(args.debug)
+    else:
+        from crowd_nav.configs.icra_benchmark.config import BaseExperimentsConfig
+        logging.info('Config has no ExperimentsConfig; using BaseExperimentsConfig defaults')
+        ec = BaseExperimentsConfig(args.debug)
+    if use_config_human_mix(args):
+        scenarios, goals = None, None
+        logging.info('Using on-the-fly multipolicy reset (skipping pre-generated scenarios)')
+    else:
+        scenarios, goals = utils.random_sequence(ec)
 
     baseline = None
 
     # configure policy
-    policy_config = config.PolicyConfig(args.debug)
+    if hasattr(config, 'PolicyConfig'):
+        policy_config = config.PolicyConfig(args.debug)
+    else:
+        from crowd_nav.configs.icra_benchmark.config import BasePolicyConfig
+        policy_config = BasePolicyConfig(args.debug)
     if args.policy == 'vecmpc' or args.policy == 'vecmppi':
-        env_config = config.EnvConfig(args.debug)
+        if hasattr(config, 'EnvConfig'):
+            env_config = config.EnvConfig(args.debug)
+        else:
+            from crowd_nav.configs.icra_benchmark.config import BaseEnvConfig
+            env_config = BaseEnvConfig(args.debug)
         policy = policy_factory[args.policy](env_config)
     elif args.policy == 'orca' or args.policy == 'sfm' or args.policy == 'cv' or args.policy == 'reactive':
         policy = policy_factory[policy_config.name]()
@@ -85,16 +173,21 @@ def main_experiments(args):
 
     if args.visualize:
         # configure environment
-        env_config = config.EnvConfig(args.debug)
+        if hasattr(config, 'EnvConfig'):
+            env_config = config.EnvConfig(args.debug)
+        else:
+            from crowd_nav.configs.icra_benchmark.config import BaseEnvConfig
+            env_config = BaseEnvConfig(args.debug)
         if args.human_num is not None:
             env_config.sim.human_num = args.human_num
+        apply_human_mix(env_config, args)
+        if args.test_scenario is not None:
+            env_config.sim.test_scenario = args.test_scenario
         env = gym.make('CrowdSim-v0')
-        e = 0
-        se = 2
-
-        env_config.env.dx_range = ec.exp.dx[e][se]
-        env_config.env.dy_range = ec.exp.dy[e][se]
-        env_config.sim.test_scenario = ec.exp.scenarios[e][se]
+        if not use_config_human_mix(args):
+            e = args.exp_e if args.exp_e is not None else 0
+            se = args.exp_se if args.exp_se is not None else 2
+            apply_exp_cell(env_config, ec, e, se)
         env.configure(env_config)
 
         robot = Robot(env_config, 'robot')
@@ -103,7 +196,11 @@ def main_experiments(args):
         robot.set_policy(policy)
         explorer = Explorer(env, robot, device, None, gamma=0.9)
 
-        train_config = config.TrainConfig(args.debug)
+        if hasattr(config, 'TrainConfig'):
+            train_config = config.TrainConfig(args.debug)
+        else:
+            from crowd_nav.configs.icra_benchmark.config import BaseTrainConfig
+            train_config = BaseTrainConfig(args.debug)
         epsilon_end = train_config.train.epsilon_end
         if not isinstance(robot.policy, ORCA):
             robot.policy.set_epsilon(epsilon_end)
@@ -123,12 +220,20 @@ def main_experiments(args):
 
         rewards = []
         time_start = time.time()
-        ob = env.reset(args.phase, scenarios[e][se][1], goals[e][se][1])
+        if scenarios is not None and not use_config_human_mix(args):
+            e = args.exp_e if args.exp_e is not None else 0
+            se = args.exp_se if args.exp_se is not None else 2
+            apply_exp_cell(env_config, ec, e, se)
+            env.configure(env_config)
+            ob = env.unwrapped.reset(phase=args.phase, scenario=scenarios[e][se][1],
+                                     goals=goals[e][se][1], test_case=args.test_case)
+        else:
+            ob = env.unwrapped.reset(phase=args.phase, test_case=args.test_case)
         done = False
         last_pos = np.array(robot.get_position())
         while not done:
             action = robot.act(ob, border=env.orca_border, baseline=baseline)
-            ob, _, done, info = env.step(action)
+            ob, _, done, info = env.unwrapped.step(action, baseline=baseline)
             rewards.append(_)
             current_pos = np.array(robot.get_position())
             logging.debug('Speed: %.2f', np.linalg.norm(current_pos - last_pos) / robot.time_step)
@@ -140,18 +245,18 @@ def main_experiments(args):
         time_end = time.time()
 
         if args.traj:
-            env.render('traj', args.video_file)
+            env.unwrapped.render('traj', args.video_file)
         else:
             if args.video_file is not None:
-                if policy_config.name == 'gcn':
+                if hasattr(policy_config, 'name') and policy_config.name == 'gcn':
                     args.video_file = os.path.join(args.video_dir, policy_config.name + '_' + policy_config.gcn.similarity_function)
                 else:
                     args.video_file = os.path.join(args.video_dir, args.video_file)
                 #args.video_file = args.video_file + '_' + args.phase + '_' + str(args.test_case) + '.mp4'
-            env.render('video', args.video_file)
-        logging.info('It takes %.2f seconds to finish. Final status is %s, cumulative_reward is %f', env.global_time, info, cumulative_reward)
+            env.unwrapped.render('video', args.video_file)
+        logging.info('It takes %.2f seconds to finish. Final status is %s, cumulative_reward is %f', env.unwrapped.global_time, info, cumulative_reward)
         if robot.visible and info == 'reach goal':
-            human_times = env.get_human_times()
+            human_times = env.unwrapped.get_human_times()
             logging.info('Average time for humans to reach goal: %.2f', sum(human_times) / len(human_times))
     else:
         exp_stats_list = []
@@ -179,14 +284,7 @@ def main_experiments(args):
                                     continue
                                 # configure environment
                                 env_config = config.EnvConfig(args.debug)
-                                env_config.env.dx_range = ec.exp.dx[e][se]
-                                env_config.env.dy_range = ec.exp.dy[e][se]
-                                env_config.env.randomize_attributes = ec.exp.randomize_attributes[e][se]
-                                env_config.humans.num_sf = ec.exp.num_sf[e][se]
-                                env_config.humans.num_orca = ec.exp.num_orca[e][se]
-                                env_config.humans.num_static = ec.exp.num_static[e][se]
-                                env_config.humans.num_linear = ec.exp.num_linear[e][se]
-                                env_config.sim.test_scenario = ec.exp.scenarios[e][se]
+                                apply_exp_cell(env_config, ec, e, se)
 
                                 if args.human_num is not None:
                                     env_config.sim.human_num = args.human_num
@@ -234,28 +332,57 @@ def main_experiments(args):
                                     test_angle_seeds = np.array(env.test_scene_seeds)
                                     b = [i * 0.01 for i in range(101)]
                                     n, bins, patches = plt.hist(test_angle_seeds, b, facecolor='g')
-                                    plt.savefig(os.path.join(args.model_dir, 'test_scene_hist.png'))
+                                    plt.savefig(os.path.join(output_dir, 'test_scene_hist.png'))
                                     plt.close()
 
                                 logging.info("Parameter settings %.2d %.2d %.2d with success rate %.2f average time %.2f minimum distance %.2f and path irregularity %.2f", p1, p2, p3, exp_stats[0], exp_stats[6], exp_stats[12], exp_stats[14])
 
         else:
             env_config = config.EnvConfig(args.debug)
+            if use_config_human_mix(args):
+                apply_human_mix(env_config, args)
+                if args.test_scenario is not None:
+                    env_config.sim.test_scenario = args.test_scenario
+                if args.human_num is not None:
+                    env_config.sim.human_num = args.human_num
+                env = gym.make('CrowdSim-v0')
+                env.configure(env_config)
+                robot = Robot(env_config, 'robot')
+                env.set_robot(robot)
+                robot.time_step = env.time_step
+                robot.set_policy(policy)
+                explorer = Explorer(env, robot, device, None, gamma=0.9)
+                train_config = config.TrainConfig(args.debug)
+                epsilon_end = train_config.train.epsilon_end
+                if not isinstance(robot.policy, ORCA):
+                    robot.policy.set_epsilon(epsilon_end)
+                policy.set_phase(args.phase)
+                policy.set_device(device)
+                if isinstance(robot.policy, ORCA):
+                    robot.policy.safety_space = args.safety_space
+                policy.set_env(env)
+                stats, exp_stats = explorer.run_k_episodes(env.case_size[args.phase], args.phase,
+                                                           print_failure=True, baseline=baseline)
+                exp_stats_list = [exp_stats]
+                print(exp_stats_list)
+                if args.plot_test_scenarios_hist:
+                    test_angle_seeds = np.array(env.test_scene_seeds)
+                    b = [i * 0.01 for i in range(101)]
+                    plt.hist(test_angle_seeds, b, facecolor='g')
+                    plt.savefig(os.path.join(output_dir, 'test_scene_hist.png'))
+                    plt.close()
+                with open(args.results_file, "w") as results:
+                    json.dump(exp_stats_list, results)
             for e in range(len(ec.exp.dx)):
+                if use_config_human_mix(args):
+                    break
                 #if e != 0:
                 #    continue
                 for se in range(len(ec.exp.dx[e])):
                     #if e == 0 and se == 6:
                     #    continue
                     # configure environment
-                    env_config.env.dx_range = ec.exp.dx[e][se]
-                    env_config.env.dy_range = ec.exp.dy[e][se]
-                    env_config.env.randomize_attributes = ec.exp.randomize_attributes[e][se]
-                    env_config.humans.num_sf = ec.exp.num_sf[e][se]
-                    env_config.humans.num_orca = ec.exp.num_orca[e][se]
-                    env_config.humans.num_static = ec.exp.num_static[e][se]
-                    env_config.humans.num_linear = ec.exp.num_linear[e][se]
-                    env_config.sim.test_scenario = ec.exp.scenarios[e][se]
+                    apply_exp_cell(env_config, ec, e, se)
 
                     if args.human_num is not None:
                         env_config.sim.human_num = args.human_num
@@ -295,7 +422,7 @@ def main_experiments(args):
                         test_angle_seeds = np.array(env.test_scene_seeds)
                         b = [i * 0.01 for i in range(101)]
                         n, bins, patches = plt.hist(test_angle_seeds, b, facecolor='g')
-                        plt.savefig(os.path.join(args.model_dir, 'test_scene_hist.png'))
+                        plt.savefig(os.path.join(output_dir, 'test_scene_hist.png'))
                         plt.close()
 
             with open(args.results_file, "w") as results:
@@ -313,7 +440,12 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', default=False, action='store_true')
     parser.add_argument('-v', '--visualize', default=False, action='store_true')
     parser.add_argument('--phase', type=str, default='test')
-    parser.add_argument('-c', '--test_case', type=int, default=None)
+    parser.add_argument('-c', '--test_case', type=int, default=None,
+                        help='Test episode index (0..499); sets RNG seed for that scenario')
+    parser.add_argument('--exp_e', type=int, default=None,
+                        help='Benchmark density row index (0..3) for --visualize with pre-generated scenarios')
+    parser.add_argument('--exp_se', type=int, default=None,
+                        help='Benchmark geometry column index for --visualize with pre-generated scenarios')
     parser.add_argument('--square', default=False, action='store_true')
     parser.add_argument('--circle', default=False, action='store_true')
     parser.add_argument('--scenario', type=str, default='circle')
@@ -329,6 +461,19 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--planning_depth', type=int, default=None)
     parser.add_argument('-w', '--planning_width', type=int, default=None)
     parser.add_argument('--sparse_search', default=False, action='store_true')
+    parser.add_argument('--human_mix', type=str, default=None,
+                        help='Paper mix: sfm_only, orca_only, mix1, mix2, mix3, PL_only, PLD_only (see human_mix_presets.py)')
+    parser.add_argument('--num_orca', type=int, default=None)
+    parser.add_argument('--num_sf', type=int, default=None,
+                        help='Number of Social Force Model pedestrians')
+    parser.add_argument('--num_powerlaw', type=int, default=None,
+                        help='Number of Power Law pedestrians')
+    parser.add_argument('--num_pledestrians', type=int, default=None,
+                        help='Number of PLEdestrians pedestrians')
+    parser.add_argument('--num_linear', type=int, default=None,
+                        help='Number of CV (constant velocity / linear) pedestrians')
+    parser.add_argument('--num_static', type=int, default=None,
+                        help='Number of static obstacles')
 
     sys_args = parser.parse_args()
 

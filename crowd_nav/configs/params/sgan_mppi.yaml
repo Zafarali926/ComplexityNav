@@ -22,7 +22,8 @@ params:
     discrete_cost_type: "winding"
   
   predictor:
-    path: '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/data/output/zara2_12_model.pt'
+    #path: '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/data/output/zara2_12_model.pt'
+    path: '/home/nisarlab/Desktop/Crowd_nav/ComplexityNav/crowd_nav/policy/vecMPC/predictors/checkpoints/sgan.pt'
     use_gpu: False
     num_samples: 20
     deviation_penalty: True

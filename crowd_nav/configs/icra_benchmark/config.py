@@ -9,25 +9,30 @@ class Config(object):
 class BaseExperimentsConfig(object):
     exp = Config()
 
-    exp.num_orca = [[[2], [5], [7], [10], [12], [15], [17]], [[1], [2], [2], [3], [3], [4], [4]], [[7], [7], [7], [7], [7]], [[0], [15], [7], [5], [4]]]
-    exp.num_sf = [[[3], [5], [8], [10], [13], [15], [18]], [[2], [2], [3], [3], [4], [4], [5]], [[8], [8], [8], [8], [8]], [[15], [0], [8], [5], [4]]]
+    exp.num_orca = [[[2], [5], [7], [10], [12], [15], [17]], [[1], [2], [2], [3], [3], [4], [4]], [[7], [7], [7], [7], [7]], [[0], [15], [7], [5], [4]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]]]
+    exp.num_sf = [[[3], [5], [8], [10], [13], [15], [18]], [[2], [2], [3], [3], [4], [4], [5]], [[8], [8], [8], [8], [8]], [[15], [0], [8], [5], [4]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]]]
+    # e=5 — Power Law / PLEdestrians density sweep (parallel to e=0 ORCA/SFM counts)
+    exp.num_powerlaw = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[15], [0], [8], [5], [4]], [[2], [5], [7], [10], [12], [15], [17]]]
+    exp.num_pledestrians = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [15], [7], [5], [4]], [[3], [5], [8], [10], [13], [15], [18]]]
 
-    exp.num_linear = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [2], [4]]]
-    exp.num_static = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [3], [3]]]
+    exp.num_linear = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [2], [4]], [[0], [0], [0], [2], [4]], [[0], [0], [0], [0], [0], [0], [0]]]
+    exp.num_static = [[[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0], [0], [0]], [[0], [0], [0], [0], [0]], [[0], [0], [0], [3], [3]], [[0], [0], [0], [3], [3]], [[0], [0], [0], [0], [0], [0], [0]]]
 
-    exp.randomize_attributes = [[False, False, False, False, False, False, False], [False, False, False, False, False, False, False], [False, False, False, False, False], [False, False, False, False, False]]
+    exp.randomize_attributes = [[False, False, False, False, False, False, False], [False, False, False, False, False, False, False], [False, False, False, False, False], [False, False, False, False, False], [False, False, False, False, False], [False, False, False, False, False, False, False]]
     
     exp.scenarios = [['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing'],
                              ['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing'],
                              ['passing', 'crossing', 'passing_crossing', 'random', 'circle_crossing'],
-                             ['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing']]
+                             ['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing'],
+                             ['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing'],
+                             ['passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing', 'passing_crossing']]
     
     exp.parameter_sweep = None
     exp.sigma = [0.3, 0.6, 0.9]
     exp.q = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
     
-    exp.dx = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-0.75, 0.75], [-1, 1], [-1.25, 1.25], [-1.5, 1.5], [-1.75, 1.75], [-2, 2], [-2.25, 2.25]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
-    exp.dy = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
+    exp.dx = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-0.75, 0.75], [-1, 1], [-1.25, 1.25], [-1.5, 1.5], [-1.75, 1.75], [-2, 2], [-2.25, 2.25]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
+    exp.dy = [[[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-6, 6]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]], [[-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5], [-5, 5]]]
     
     exp.parameter_sweep = None
     exp.sigma = [0.3, 0.6, 0.9]
@@ -78,6 +83,8 @@ class BaseEnvConfig(object):
     humans.sensor = 'coordinates'
     humans.num_sf = [4]
     humans.num_orca = [4]
+    humans.num_powerlaw = [0]
+    humans.num_pledestrians = [0]
     humans.num_static = [3]
     humans.num_linear = [4]
     humans.num_sf_orca = None
@@ -93,7 +100,8 @@ class BaseEnvConfig(object):
 
     MPC = Config()
     MPC.model = 'sgan' #Change to sgan/cv for mpc methods
-    MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan.yaml' #Change to sgan/cv for mpc methods
+    MPC.path = '/home/nisarlab/Desktop/Crowd_nav/ComplexityNav/crowd_nav/configs/params/sgan.yaml' #Change to sgan/cv for mpc methods
+    #MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan.yaml' #Change to sgan/cv for mpc methods
     #MPC.path = '/home/socnav/arstr/RelationalGraphLearning/crowd_nav/configs/params/sgan_mppi.yaml' #Change to sgan/cv for mpc methods
     with open(MPC.path, "r") as fin:
         MPC.mpc = yaml.safe_load(fin)
@@ -181,11 +189,11 @@ class BasePolicyConfig(object):
 
 class BaseTrainConfig(object):
     trainer = Config()
-    trainer.batch_size = 100
+    trainer.batch_size = 256
     trainer.optimizer = 'Adam'
 
     imitation_learning = Config()
-    imitation_learning.il_episodes = 2000
+    imitation_learning.il_episodes = 5
     imitation_learning.il_policy = 'orca'
     imitation_learning.il_epochs = 50
     imitation_learning.il_learning_rate = 0.001

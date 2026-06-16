@@ -54,10 +54,14 @@ class Explorer(object):
             pbar = None
 
         for i in range(k):
+            #print(self.env.reset)
+            #print(type(self.env))
+            print("Episode {}".format(i))
             if self.scenarios is not None:
-                ob = self.env.reset(phase, self.scenarios[i], self.goals[i])
+                ob = self.env.unwrapped.reset(phase=phase, scenario=self.scenarios[i],
+                goals=self.goals[i])
             else:
-                ob = self.env.reset(phase)
+                ob = self.env.unwrapped.reset(phase=phase)
             self.env.scenario_num = self.env.scenario_num + 1
             done = False
             states = []
@@ -71,7 +75,7 @@ class Explorer(object):
                 action = self.robot.act(ob, self.env.orca_border, baseline=baseline)
                 rstate = self.robot.get_full_state()
 
-                ob, reward, done, info = self.env.step(action, baseline=baseline)
+                ob, reward, done, info = self.env.unwrapped.step(action, baseline=baseline)
                 new_pos = [self.robot.get_full_state().px, self.robot.get_full_state().py]
                 path_length = path_length + np.sqrt((new_pos[0] - prev_pos[0])**2 + (new_pos[1] - prev_pos[1])**2)
                 states.append(self.robot.policy.last_state)

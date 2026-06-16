@@ -28,6 +28,8 @@ def set_random_seeds(seed):
 
 def main(args):
     set_random_seeds(args.randomseed)
+    # Enable CUDA optimizations for better GPU utilization
+    torch.backends.cudnn.benchmark = True
     # configure paths
     make_new_dir = True
     if os.path.exists(args.output_dir):
@@ -79,7 +81,10 @@ def main(args):
     repo = git.Repo(search_parent_directories=True)
     logging.info('Current git head hash code: {}'.format(repo.head.object.hexsha))
     logging.info('Current config content is :{}'.format(config))
-    device = torch.device("cuda:0" if torch.cuda.is_available() and args.gpu else "cpu")
+    if args.gpu:
+        device = torch.device(f"cuda:{args.gpu_id}" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cpu")
     logging.info('Using device: %s', device)
     writer = SummaryWriter(log_dir=args.output_dir)
 
@@ -116,6 +121,8 @@ def main(args):
     # configure trainer and explorer
     memory = ReplayMemory(capacity)
     model = policy.get_model()
+    model = model.to(device)
+    logging.info("Model parameters are on device: %s", next(model.parameters()).device)
     batch_size = train_config.trainer.batch_size
     optimizer = train_config.trainer.optimizer
     if policy_config.name == 'model_predictive_rl':
@@ -132,11 +139,11 @@ def main(args):
     if args.resume:
         if not os.path.exists(rl_weight_file):
             logging.error('RL weights does not exist')
-        model.load_state_dict(torch.load(rl_weight_file))
+        model.load_state_dict(torch.load(rl_weight_file, map_location=device))
         rl_weight_file = os.path.join(args.output_dir, 'resumed_rl_model.pth')
         logging.info('Load reinforcement learning trained weights. Resume training')
     elif os.path.exists(il_weight_file):
-        model.load_state_dict(torch.load(il_weight_file))
+        model.load_state_dict(torch.load(il_weight_file, map_location=device))
         logging.info('Load imitation learning trained weights.')
     else:
         il_episodes = train_config.imitation_learning.il_episodes
@@ -211,9 +218,16 @@ def main(args):
             reward = stats[3]
             explorer.log('val', episode // evaluation_interval)
 
-            if episode % checkpoint_interval == 0 and reward > best_val_reward:
-                best_val_reward = reward
-                best_val_model = copy.deepcopy(policy.get_state_dict())
+            if episode % checkpoint_interval == 0:
+                if reward > best_val_reward:
+                    best_val_reward = reward
+                    best_val_model = copy.deepcopy(policy.get_state_dict())
+                if best_val_model is not None:
+                    best_val_path = os.path.join(args.output_dir, 'best_val.pth')
+                    torch.save(best_val_model, best_val_path)
+                    logging.info(
+                        'Saved best_val.pth at episode %d (best val cumulative reward: %.4f)',
+                        episode, best_val_reward)
         # test after every evaluation to check how the generalization performance evolves
             if args.test_after_every_eval:
                 explorer.run_k_episodes(env.case_size['test'], 'test', episode=episode, print_failure=True)
@@ -241,6 +255,7 @@ if __name__ == '__main__':
     parser.add_argument('--weights', type=str)
     parser.add_argument('--resume', default=False, action='store_true')
     parser.add_argument('--gpu', default=False, action='store_true')
+    parser.add_argument('--gpu_id', type=int, default=0, help='GPU device ID to use (0=integrated, 1=discrete, etc.)')
     parser.add_argument('--debug', default=False, action='store_true')
     parser.add_argument('--test_after_every_eval', default=False, action='store_true')
     parser.add_argument('--randomseed', type=int, default=17)
